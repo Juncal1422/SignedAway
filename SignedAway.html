@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Signed Away</title>
+  </head>
+  <body style="margin:0;background:#000;color:#e9d8d1">
+    <main id="game" style="height:100dvh">
+      <p id="status" role="status" style="position:absolute;inset:50% 16px auto;margin:0;text-align:center;font:16px system-ui">
+        Cargando Signed Away…
+      </p>
+    </main>
+    <script>
+      (() => {
+        const status = document.getElementById('status');
+        const repository = 'Juncal1422/SignedAway';
+        const path = 'launcher/signed-away.js';
+
+        async function getRemoteArchive() {
+          const signal = AbortSignal.timeout(5500);
+          let ref = 'main';
+          try {
+            const response = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, { signal, cache: 'no-store' });
+            if (response.ok) {
+              const head = (await response.json()).object?.sha;
+              if (/^[a-f0-9]{40}$/.test(head)) ref = head;
+            }
+          } catch {
+            // GitHub Raw puede seguir respondiendo si la consulta de la rama falla.
+          }
+          const response = await fetch(`https://raw.githubusercontent.com/${repository}/${ref}/${path}`, { signal, cache: 'no-store' });
+          if (!response.ok) throw new Error(`GitHub devolvió HTTP ${response.status}.`);
+          const archive = (await response.text()).match(/^globalThis\.signedAwayArchive = "([a-zA-Z0-9+/=]+)";$/m)?.[1];
+          if (!archive) throw new Error('El paquete de GitHub tiene un formato inválido.');
+          return archive;
+        }
+
+        function loadScript(src) {
+          return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.onload = () => { script.remove(); resolve(); };
+            script.onerror = () => { script.remove(); reject(new Error('No se pudo cargar el script.')); };
+            script.src = src;
+            document.head.append(script);
+          });
+        }
+
+        async function getLocalArchive() {
+          // Los navegadores permiten cargar un script clásico vecino por
+          // file://. Un fetch o un módulo desde ese origen estaría bloqueado.
+          await loadScript(new URL(path, location.href).href);
+          const archive = globalThis.signedAwayArchive;
+          delete globalThis.signedAwayArchive;
+          if (typeof archive !== 'string') throw new Error('El paquete local tiene un formato inválido.');
+          return archive;
+        }
+
+        async function start() {
+          let archive;
+          try {
+            archive = await getRemoteArchive();
+          } catch {
+            status.textContent = 'Cargando la copia local…';
+            archive = await getLocalArchive();
+          }
+
+          const bytes = Uint8Array.from(atob(archive), (character) => character.charCodeAt(0));
+          const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+          const code = await new Response(stream).arrayBuffer();
+          const scriptUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+          try {
+            await loadScript(scriptUrl);
+          } finally {
+            URL.revokeObjectURL(scriptUrl);
+          }
+          status.remove();
+        }
+
+        start().catch(() => {
+          status.textContent = 'No se pudo cargar Signed Away. Conéctate a internet o abre el lanzador desde una copia completa del repositorio.';
+        });
+      })();
+    </script>
+  </body>
+</html>

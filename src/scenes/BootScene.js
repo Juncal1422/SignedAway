@@ -2,6 +2,10 @@ import Phaser from 'phaser';
 
 // Las rutas relativas del build conservan el punto de entrada en GitHub Pages.
 const assetRoot = `${import.meta.env.BASE_URL}assets/`;
+// El build portátil inyecta los mismos PNG como URLs de datos. El build web
+// conserva los archivos externos de public/assets para cargar vía HTTP.
+const embeddedAssets = typeof __SIGNED_AWAY_ASSETS__ === 'undefined' ? null : __SIGNED_AWAY_ASSETS__;
+const assetUrl = (path) => embeddedAssets?.[path] ?? assetRoot + path;
 const sheets = [
   ['player', 'sprites/player.png', 16],
   ['enemies', 'sprites/enemies.png', 16],
@@ -73,10 +77,10 @@ export class BootScene extends Phaser.Scene {
     this.loadErrors = [];
     this.load.on('loaderror', (file) => this.loadErrors.push(file.key));
     for (const [key, path, frameSize] of sheets) {
-      this.load.spritesheet(key, assetRoot + path, { frameWidth: frameSize, frameHeight: frameSize });
+      this.load.spritesheet(key, assetUrl(path), { frameWidth: frameSize, frameHeight: frameSize });
     }
-    this.load.image('panel', assetRoot + 'ui/panel_nineslice.png');
-    this.load.image('button', assetRoot + 'ui/button_nineslice.png');
+    this.load.image('panel', assetUrl('ui/panel_nineslice.png'));
+    this.load.image('button', assetUrl('ui/button_nineslice.png'));
   }
 
   create() {
