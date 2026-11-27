@@ -1,18 +1,31 @@
 import Phaser from 'phaser';
-import { ELEMENTS, ZODIAC_BY_ID } from '../data/zodiacData.js';
-import { HYBRID_ELEMENTS } from '../data/astrologyTable.js';
+import { ZODIAC_BY_ID } from '../data/zodiacData.js';
+import { ALL_ELEMENTS } from '../data/elementalPowers.js';
 import { MODIFIER_BY_ID } from '../data/spellModifiers.js';
 import { ROOM_BOTTOM } from '../systems/MapGenerator.js';
 
 export const ink = { white: 0xe9d8d1, muted: 0xb3a5b1, dim: 0xa195a2, gold: 0xf2bd87 };
-export const ZONES = {
-  ...ELEMENTS,
-  ...Object.fromEntries(Object.values(HYBRID_ELEMENTS).map((element) => [element.id, element])),
-};
+export const ZONES = ALL_ELEMENTS;
+
+export function configureCamera(scene) {
+  scene.cameras.main.setOrigin(0, 0).setZoom(2);
+}
 
 export function label(scene, x, y, value, { size = 8, color = ink.white, align = 0.5 } = {}) {
   return scene.add.bitmapText(x, y, 'pixel-font', String(value).toUpperCase(), size)
     .setOrigin(align, 0.5).setTint(color);
+}
+
+export function wrappedLabel(scene, x, y, text, width, options = {}) {
+  const size = options.size ?? 8;
+  const limit = Math.floor(width / (size * 0.75));
+  const lines = [''];
+  for (const word of text.split(/\s+/)) {
+    const line = lines.at(-1);
+    if (line.length && line.length + word.length + 1 > limit) lines.push(word);
+    else lines[lines.length - 1] = line ? `${line} ${word}` : word;
+  }
+  return label(scene, x, y, lines.join('\n'), options);
 }
 
 export function frame(scene, x, y, width, height, key = 'panel') {
@@ -40,6 +53,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   create({ world }) {
+    configureCamera(this);
     this.world = world;
     this.modal = [];
     this.modifierKey = null;
@@ -63,7 +77,9 @@ export class UIScene extends Phaser.Scene {
     const { floorIndex, route } = this.world;
     const zone = ZONES[route[floorIndex]];
     this.zoneText.setText(`PISO ${floorIndex + 1}/${route.length}  ${zone.name.toUpperCase()}`).setTint(zone.color);
-    this.spellText.setText(this.world.player.spell.name.toUpperCase()).setTint(this.world.player.color);
+    const { spell, color, build } = this.world.player;
+    const powers = build.powers.length ? ` / ${ZONES[build.element].name}` : '';
+    this.spellText.setText((spell.name + powers).toUpperCase()).setTint(color);
   }
 
   update() {
@@ -139,21 +155,12 @@ export class UIScene extends Phaser.Scene {
     this.modal.push(overlay, frame(this, 240, 144, 328, height), label(this, 240, 161 - height / 2, title, { size: 16 }));
   }
 
-  offerModifiers(choices, select) {
-    this.modalBackground('ELIGE UNA MEJORA', 161);
-    choices.forEach((modifier, index) => {
-      const y = 110 + index * 39;
-      this.modal.push(...button(this, 240, y, 280, modifier.name, () => select(modifier.id), { color: ink.gold }),
-        label(this, 240, y + 19, modifier.description, { color: ink.muted }));
-    });
-  }
-
   floorCleared(unlockedSign, final, next) {
     this.modalBackground(final ? 'VICTORIA' : 'PISO SUPERADO', 120);
     const text = unlockedSign ? `DESBLOQUEADO: ${ZODIAC_BY_ID[unlockedSign].name}` : 'VIDA RECUPERADA';
     this.modal.push(
       label(this, 240, 131, text, { color: ink.gold }),
-      ...button(this, 240, 169, 170, final ? 'CONTINUAR LINAJE' : 'SIGUIENTE PISO', next),
+      ...button(this, 240, 169, 170, final ? 'VOLVER AL TÍTULO' : 'SIGUIENTE PISO', next),
     );
   }
 
@@ -170,6 +177,7 @@ export class UIScene extends Phaser.Scene {
     this.modal.push(
       ...button(this, 240, 128, 170, 'REANUDAR', resume),
       ...button(this, 240, 166, 170, 'VOLVER AL TÍTULO', quit, { color: ink.muted }),
+      label(this, 240, 194, 'TRAZO AMARILLO: AVISO   ROJO RAYADO: DAÑO', { size: 7 }),
     );
   }
 }

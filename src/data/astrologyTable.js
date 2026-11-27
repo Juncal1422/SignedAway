@@ -1,3 +1,4 @@
+import { HYBRID_ELEMENTS } from './elementalPowers.js';
 import { ZODIAC_SIGNS, ZODIAC_BY_ID } from './zodiacData.js';
 
 // Los índices representan la separación más corta en la rueda de doce signos.
@@ -11,13 +12,6 @@ export const ASTROLOGICAL_ASPECTS = [
   { id: 'quincunx', name: 'Quincuncio', damage: 1.02, cooldown: 1.03, variation: 0.15, parentWeight: 0.25 },
   { id: 'opposition', name: 'Oposición', damage: 1.12, cooldown: 1.07, variation: 0.18, parentWeight: 0.30 },
 ];
-
-// Se ordena el par al consultarlo. El orden de los progenitores sí afecta a los
-// stats y a la forma del hechizo, pero ambos órdenes descubren la misma zona.
-export const HYBRID_ELEMENTS = {
-  'earth+fire': { id: 'magma', name: 'Magma', color: 0xff9a44 },
-  'air+water': { id: 'storm', name: 'Tormenta', color: 0xa29bff },
-};
 
 export const COMPATIBILITY_TABLE = Object.fromEntries(ZODIAC_SIGNS.map((parent, parentIndex) => [
   parent.id,
@@ -41,13 +35,17 @@ const variableSpellFields = ['damage', 'cooldown', 'speed', 'range', 'radius', '
 
 // Predicción pura para una futura pantalla de selección. Cada intervalo usa los
 // mismos valores que el cálculo final, de modo que previsualizar no gasta RNG.
-export function predictInheritance(parentSignId, selectedSignId) {
+export function predictInheritance(parentSignId, selectedSignId, parentPowers = []) {
   const parent = requireSign(parentSignId);
   const selected = requireSign(selectedSignId);
   const aspect = COMPATIBILITY_TABLE[parent.id][selected.id];
   const elements = [...new Set([selected.element, parent.element])];
-  const hybridKey = [...elements].sort().join('+');
-  const hybrid = HYBRID_ELEMENTS[hybridKey] ?? null;
+  // Un Quincuncio no fusiona. La Oposición puede crear una mezcla básica,
+  // pero resolver una afinidad avanzada requiere otra relación zodiacal.
+  const ingredients = aspect.id === 'opposition' ? [] : [...parentPowers].reverse();
+  const hybrid = aspect.id === 'quincunx' ? null : [...ingredients, parent.element]
+    .map((element) => HYBRID_ELEMENTS[[element, selected.element].sort().join('+')])
+    .find((power) => power && !parentPowers.includes(power.id)) ?? null;
 
   const stats = Object.fromEntries(Object.entries(selected.stats).map(([field, value]) => [
     field,
@@ -84,8 +82,8 @@ function rollValue(center, variation, random) {
   return Math.max(1, Math.round(center * multiplier));
 }
 
-export function rollInheritance(parentSignId, selectedSignId, random = Math.random) {
-  const prediction = predictInheritance(parentSignId, selectedSignId);
+export function rollInheritance(parentSignId, selectedSignId, random = Math.random, parentPowers = []) {
+  const prediction = predictInheritance(parentSignId, selectedSignId, parentPowers);
   const variation = prediction.aspect.variation;
   const stats = Object.fromEntries(Object.entries(prediction.stats).map(([field, center]) => [
     field, rollValue(center, variation, random),

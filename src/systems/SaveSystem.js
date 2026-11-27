@@ -1,12 +1,12 @@
 import { STARTER_SIGN_IDS, ZODIAC_BY_ID } from '../data/zodiacData.js';
-import { HYBRID_ELEMENTS } from '../data/astrologyTable.js';
+import { ALL_ELEMENTS, POWER_BY_ID } from '../data/elementalPowers.js';
+import { MAX_MODIFIER_STACKS } from '../data/spellModifiers.js';
 
 const storageKey = 'signed-away.progress';
-const version = 1;
-const hybridIds = Object.values(HYBRID_ELEMENTS).map(({ id }) => id);
+const version = 2;
 
 function initialProgress() {
-  return { version, unlockedSigns: [...STARTER_SIGN_IDS], unlockedZones: [], lineage: [], pendingAncestor: null };
+  return { version, unlockedSigns: [...STARTER_SIGN_IDS], unlockedZones: [], lineage: [], history: [], pendingAncestor: null, bonuses: {}, pendingReward: [] };
 }
 
 function isSign(id) {
@@ -16,6 +16,21 @@ function isSign(id) {
 function validEntry(entry) {
   return entry && isSign(entry.signId) && ['defeat', 'victory'].includes(entry.outcome)
     && Number.isSafeInteger(entry.floors) && entry.floors >= 0;
+}
+
+// Los guardados de la versión 1 conservan sus expediciones. Solo las nuevas
+// pueden incluir encuentros individuales, que antes no se registraban.
+function normalizeEntry(entry) {
+  const powers = Array.isArray(entry.powers) ? entry.powers : [entry.hybridId];
+  const basicSignId = isSign(entry.basicSignId) ? entry.basicSignId : entry.signId;
+  const element = Object.hasOwn(ALL_ELEMENTS, entry.element) ? entry.element
+    : (Object.hasOwn(POWER_BY_ID, entry.hybridId) ? entry.hybridId : ZODIAC_BY_ID[entry.signId]?.element);
+  return {
+    ...entry, basicSignId, element, powers: [...new Set(powers.filter((id) => Object.hasOwn(POWER_BY_ID, id)))],
+    power: entry.power ?? ZODIAC_BY_ID[basicSignId]?.spell.name,
+    bosses: Array.isArray(entry.bosses) ? entry.bosses.filter((boss) =>
+      boss && isSign(boss.signId) && Object.hasOwn(ALL_ELEMENTS, boss.element)) : [],
+  };
 }
 
 // Cada escritura es un único reemplazo en localStorage. El estado en memoria
@@ -39,15 +54,21 @@ export class SaveSystem {
     if (!raw) return;
     try {
       const saved = JSON.parse(raw);
-      if (saved?.version !== version) return;
+      if (![1, version].includes(saved?.version)) return;
       const signs = Array.isArray(saved.unlockedSigns) ? saved.unlockedSigns.filter(isSign) : [];
-      const zones = Array.isArray(saved.unlockedZones) ? saved.unlockedZones.filter((id) => hybridIds.includes(id)) : [];
-      const lineage = Array.isArray(saved.lineage) ? saved.lineage.filter(validEntry) : [];
+      const zones = Array.isArray(saved.unlockedZones) ? saved.unlockedZones.filter((id) => Object.hasOwn(POWER_BY_ID, id)) : [];
+      const lineage = Array.isArray(saved.lineage) ? saved.lineage.filter(validEntry).map(normalizeEntry) : [];
       this.progress = {
         version,
         unlockedSigns: [...new Set([...STARTER_SIGN_IDS, ...signs])],
         unlockedZones: [...new Set(zones)],
         lineage,
+        history: Array.isArray(saved.history) ? saved.history.filter((saga) => Array.isArray(saga?.runs))
+          .map((saga) => ({ ...saga, runs: saga.runs.filter(validEntry).map(normalizeEntry) })) : [],
+        bonuses: Object.fromEntries(Object.entries(saved.bonuses ?? {}).filter(([id, value]) =>
+          Object.hasOwn(MAX_MODIFIER_STACKS, id) && Number.isInteger(value) && value > 0)
+          .map(([id, value]) => [id, Math.min(value, MAX_MODIFIER_STACKS[id])])),
+        pendingReward: Array.isArray(saved.pendingReward) ? [...new Set(saved.pendingReward.filter((id) => Object.hasOwn(MAX_MODIFIER_STACKS, id)))].slice(0, 3) : [],
         pendingAncestor: isSign(saved.pendingAncestor) ? saved.pendingAncestor : null,
       };
     } catch {
@@ -72,18 +93,45 @@ export class SaveSystem {
   }
 
   unlockZone(zoneId) {
-    if (!hybridIds.includes(zoneId) || this.progress.unlockedZones.includes(zoneId)) return false;
+    if (!Object.hasOwn(POWER_BY_ID, zoneId) || this.progress.unlockedZones.includes(zoneId)) return false;
     this.progress.unlockedZones.push(zoneId);
     this.write();
     return true;
   }
 
-  completeRun({ signId, parentSignId, aspectId, hybridId, outcome, floors }) {
-    const entry = { signId, parentSignId, aspectId, hybridId, outcome, floors, date: new Date().toISOString() };
+  get ancestor() {
+    return this.progress.lineage.at(-1) ?? null;
+  }
+
+  completeRun({ build, outcome, floors, bosses = [], reward = [] }) {
+    const { signId, parentSignId, aspectId, hybridId, element, powers, basicSignId, spell } = build;
+    const entry = normalizeEntry({
+      signId, parentSignId, aspectId, hybridId, element, powers, basicSignId,
+      power: spell.name, outcome, floors, bosses, date: new Date().toISOString(),
+    });
     if (!validEntry(entry)) throw new RangeError('Invalid lineage entry');
     this.progress.lineage.push(entry);
     this.progress.pendingAncestor = signId;
+    this.progress.pendingReward = outcome === 'victory' ? reward : [];
     this.write();
+  }
+
+  claimReward(id) {
+    const count = this.progress.bonuses[id] ?? 0;
+    if (!this.progress.pendingReward.includes(id) || count >= MAX_MODIFIER_STACKS[id]) return false;
+    this.progress.bonuses[id] = count + 1;
+    this.progress.pendingReward = [];
+    this.write();
+    return true;
+  }
+
+  resetSaga() {
+    const { lineage, history } = this.progress;
+    if (!lineage.length) return false;
+    this.progress = initialProgress();
+    this.progress.history = [...history, { date: new Date().toISOString(), runs: lineage }];
+    this.write();
+    return true;
   }
 }
 

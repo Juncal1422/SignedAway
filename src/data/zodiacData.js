@@ -76,3 +76,19 @@ export const ZODIAC_SIGNS = [
 export const ZODIAC_BY_ID = Object.fromEntries(ZODIAC_SIGNS.map((sign) => [sign.id, sign]));
 export const STARTER_SIGN_IDS = ZODIAC_SIGNS.filter((sign) => sign.modality === 'cardinal')
   .map((sign) => sign.id);
+
+// Descripciones compartidas por el selector, el HUD y el grimorio.
+export const SPELL_DESCRIPTIONS = {
+  bolt: 'Dispara una brasa veloz en línea recta.',
+  shield: 'Levanta un baluarte que bloquea golpes y daña cerca.',
+  split: 'Lanza dos filos separados que pueden golpear a la vez.',
+  pulse: 'Libera una marea alrededor del personaje.',
+  cone: 'Quema a los enemigos en un abanico frontal.',
+  summon: 'Coloca un guardián que dispara a enemigos cercanos.',
+  returning: 'El filo vuelve a ti y puede volver a golpear.',
+  piercing: 'Una aguja larga atraviesa varios enemigos.',
+  charged: 'Mantén el ataque pulsado para cargar un cometa.',
+  trap: 'Coloca una falla que estalla al pisarla un enemigo.',
+  orbit: 'Dos filos giran alrededor del personaje.',
+  ricochet: 'Lanza un orbe que rebota al chocar con un muro.',
+};

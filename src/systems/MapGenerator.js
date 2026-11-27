@@ -1,3 +1,4 @@
+import { POWER_BY_ID } from '../data/elementalPowers.js';
 import { ELEMENTS } from '../data/zodiacData.js';
 
 export const TILE_SIZE = 16;
@@ -21,7 +22,7 @@ export const ROOM_DOORS = {
   south: { x: ROOM_CENTER.x, y: ROOM_BOTTOM - 8, entryX: ROOM_CENTER.x, entryY: ROOM_BOTTOM - 34 },
   west: { x: ROOM_LEFT + 8, y: ROOM_CENTER.y, entryX: ROOM_LEFT + 34, entryY: ROOM_CENTER.y },
 };
-const zoneTints = { magma: 0xc18d77, storm: 0x988bc5 };
+
 const pick = (values, random) => values[Math.floor(random() * values.length)];
 
 // Cuadrícula pequeña de habitaciones conectadas. La primera expansión escoge
@@ -108,18 +109,24 @@ function createRoomTiles(room, floorIndex) {
   return tiles;
 }
 
+function softenTint(color) {
+  const soften = (shift) => Math.round(112 + ((color >> shift) & 255) * 0.5);
+  return (soften(16) << 16) | (soften(8) << 8) | soften(0);
+}
+
 export function createRoomRenderer(scene, room, element) {
   const sprites = [];
-  const baseTint = ELEMENTS[element]?.roomTint ?? zoneTints[element];
+  const baseTint = ELEMENTS[element]?.roomTint ?? softenTint(POWER_BY_ID[element].color);
   room.tiles.forEach((row, y) => row.forEach((frame, x) => {
-    const sprite = scene.add.image(ROOM_LEFT + TILE_SIZE * (x + 0.5), ROOM_TOP + TILE_SIZE * (y + 0.5), 'tiles', frame);
+    const sprite = scene.add.image(ROOM_LEFT + TILE_SIZE * (x + 0.5), ROOM_TOP + TILE_SIZE * (y + 0.5), 'tiles', frame).setDisplaySize(TILE_SIZE, TILE_SIZE);
     sprites.push(sprite);
   }));
   const doorSprites = Object.keys(room.doors).map((direction) => {
     const door = ROOM_DOORS[direction];
     const rotation = { north: 0, east: Math.PI / 2, south: Math.PI, west: -Math.PI / 2 }[direction];
-    return scene.add.image(door.x, door.y, 'tiles', 5).setRotation(rotation).setDepth(1);
+    return scene.add.image(door.x, door.y, 'tiles', 5).setDisplaySize(TILE_SIZE, TILE_SIZE).setRotation(rotation).setDepth(1);
   });
+  const wallTint = 0xe4d4d6;
   return {
     sprites,
     doorSprites,
@@ -129,6 +136,10 @@ export function createRoomRenderer(scene, room, element) {
       // y distancia cambian como máximo diez veces por segundo desde GameScene.
       const pulse = 0.88 + 0.08 * Math.sin(time / 850);
       for (const sprite of sprites) {
+        if (Number(sprite.frame.name) === 2) {
+          sprite.setTint(wallTint);
+          continue;
+        }
         const distance = Math.hypot(sprite.x - player.x, sprite.y - player.y);
         const strength = 0.76 + pulse * 0.62 * Math.max(0, 1 - distance / 190);
         const red = Math.min(255, Math.round(((baseTint >> 16) & 255) * strength));

@@ -5,13 +5,13 @@ import { ZodiacSelectScene } from './scenes/ZodiacSelectScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { UIScene } from './scenes/UIScene.js';
 
-// Una resolución lógica fija mantiene las colisiones y la tipografía estables.
+// Las cámaras dibujan el espacio lógico a 2× para mostrar los píxeles de 32×32.
 // FIT adapta el canvas al viewport. Phaser AUTO permite arrancar sin WebGL.
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: 480,
-  height: 288,
+  width: 960,
+  height: 576,
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#0e0c14',

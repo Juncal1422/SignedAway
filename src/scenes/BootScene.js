@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { ZODIAC_SIGNS } from '../data/zodiacData.js';
+import { configureCamera } from './UIScene.js';
 
 // Las rutas relativas del build conservan el punto de entrada en GitHub Pages.
 const assetRoot = `${import.meta.env.BASE_URL}assets/`;
@@ -7,12 +9,12 @@ const assetRoot = `${import.meta.env.BASE_URL}assets/`;
 const embeddedAssets = typeof __SIGNED_AWAY_ASSETS__ === 'undefined' ? null : __SIGNED_AWAY_ASSETS__;
 const assetUrl = (path) => embeddedAssets?.[path] ?? assetRoot + path;
 const sheets = [
-  ['player', 'sprites/player.png', 16],
-  ['enemies', 'sprites/enemies.png', 16],
-  ['bosses', 'sprites/bosses.png', 24],
-  ['projectiles', 'sprites/projectiles.png', 16],
-  ['tiles', 'tilesets/gothic_dungeon_tileset.png', 16],
-  ['zodiac', 'ui/icons_zodiac.png', 16],
+  ['player', 'sprites/player.png', 32],
+  ['enemies', 'sprites/enemies.png', 32],
+  ['bosses', 'sprites/bosses.png', 32],
+  ['projectiles', 'sprites/projectiles.png', 32],
+  ['tiles', 'tilesets/gothic_dungeon_tileset.png', 32],
+  ['zodiac', 'ui/icons_zodiac.png', 32],
 ];
 
 // Fuente de 5×7. Cada número representa los cinco bits de una fila; el sexto
@@ -40,6 +42,7 @@ const glyphs = {
   '+': [0, 4, 4, 31, 4, 4, 0], '-': [0, 0, 0, 31, 0, 0, 0],
   '/': [1, 1, 2, 4, 8, 16, 16], '.': [0, 0, 0, 0, 0, 4, 4],
   ':': [0, 4, 4, 0, 4, 4, 0], '%': [17, 2, 2, 4, 8, 8, 17],
+  'ª': [6, 5, 7, 5, 0, 7, 0],
   'Á': [2, 4, 14, 17, 31, 17, 17], 'É': [2, 4, 31, 16, 30, 16, 31],
   'Í': [2, 4, 14, 4, 4, 4, 14], 'Ó': [2, 4, 14, 17, 17, 17, 14],
   'Ú': [2, 4, 17, 17, 17, 17, 14], 'Ñ': [10, 20, 17, 25, 21, 19, 17],
@@ -84,15 +87,24 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    configureCamera(this);
     createPixelFont(this);
     if (this.loadErrors.length) {
       this.add.bitmapText(240, 136, 'pixel-font', 'ERROR AL CARGAR RECURSOS', 12).setOrigin(0.5);
       this.add.bitmapText(240, 156, 'pixel-font', this.loadErrors.join(' ').toUpperCase(), 8).setOrigin(0.5);
       return;
     }
-    this.anims.create({
-      key: 'walk', frames: this.anims.generateFrameNumbers('player', { start: 0, end: 3 }),
-      frameRate: 9, repeat: -1,
+    const animations = {
+      walk: [0, 3, 9, -1], attack: [4, 6, 21, 0], dash: [7, 9, 25, 0], hurt: [10, 11, 15, 0],
+    };
+    ZODIAC_SIGNS.forEach((sign, index) => {
+      for (const [pose, [start, end, frameRate, repeat]] of Object.entries(animations)) {
+        this.anims.create({
+          key: `${sign.id}-${pose}`,
+          frames: this.anims.generateFrameNumbers('player', { start: index * 12 + start, end: index * 12 + end }),
+          frameRate, repeat,
+        });
+      }
     });
     const texture = this.textures.createCanvas('element-glow', 48, 48);
     const context = texture.getContext();

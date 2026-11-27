@@ -1,38 +1,43 @@
 import { ELEMENTS, ZODIAC_BY_ID, ZODIAC_SIGNS } from '../data/zodiacData.js';
-import { HYBRID_ELEMENTS, predictInheritance, rollInheritance } from '../data/astrologyTable.js';
+import { predictInheritance, rollInheritance } from '../data/astrologyTable.js';
 
-// La afinidad heredada añade un efecto menor al patrón elegido. Magma y
-// Tormenta usan reglas propias que también distinguen el combate de sus linajes.
-const affinities = {
-  fire: { burn: 0.08 },
-  water: { slow: 0.86 },
-  air: { pierce: 1 },
-  earth: { damageScale: 1.10 },
-  magma: { burn: 0.14, damageScale: 1.09 },
-  storm: { slow: 0.83, chain: 0.32 },
-};
-
-const hybridsById = Object.fromEntries(Object.values(HYBRID_ELEMENTS).map((element) => [element.id, element]));
+import { ALL_ELEMENTS, compositeAffinity } from '../data/elementalPowers.js';
 
 export function affinityColor(element) {
-  return (ELEMENTS[element] ?? hybridsById[element]).color;
+  return ALL_ELEMENTS[element].color;
 }
 
-// El personaje inicial usa cifras fijas. Los cruces aplican las fórmulas de
-// astrologyTable.js y mantienen el patrón de ataque del signo elegido.
-export function createDescendant({ parentSignId = null, signId, random = Math.random }) {
+export function createDescendant({ parentSignId = null, ancestor = null, signId, random = Math.random }) {
   const sign = Object.hasOwn(ZODIAC_BY_ID, signId) ? ZODIAC_BY_ID[signId] : null;
   if (!sign) throw new RangeError(`Unknown zodiac sign: ${signId}`);
-  const inherited = parentSignId ? rollInheritance(parentSignId, signId, random) : {
+  const knownPowers = ancestor?.powers ?? [];
+  const inherited = parentSignId ? rollInheritance(parentSignId, signId, random, knownPowers) : {
     signId, aspectId: null, elements: [sign.element], hybridId: null,
     stats: { ...sign.stats }, spell: { ...sign.spell },
   };
-  const affinity = affinities[inherited.hybridId ?? inherited.elements[1]] ?? {};
-  return { ...inherited, parentSignId, element: inherited.hybridId ?? inherited.elements[0], affinity };
+  const powers = inherited.hybridId ? [...knownPowers, inherited.hybridId] : [...knownPowers];
+  const inheritedBasic = (powers.length || knownPowers.length) && (ancestor?.basicSignId ?? parentSignId);
+  const basic = inheritedBasic ? ZODIAC_BY_ID[inheritedBasic] : sign;
+  // Tras obtener una afinidad, el ataque anterior viaja con el linaje. Las
+  // nuevas tiradas siguen ajustando su daño y cadencia sin cambiar su forma.
+  if (basic.id !== sign.id) {
+    inherited.spell = {
+      ...basic.spell,
+      damage: Math.max(1, Math.round(basic.spell.damage * inherited.spell.damage / sign.spell.damage)),
+      cooldown: Math.max(1, Math.round(basic.spell.cooldown * inherited.spell.cooldown / sign.spell.cooldown)),
+    };
+  }
+  const affinity = compositeAffinity(powers);
+  inherited.spell.cooldown = Math.max(80, Math.round(inherited.spell.cooldown * (affinity.cooldownScale ?? 1)));
+  return {
+    ...inherited, parentSignId, powers, affinity,
+    basicSignId: basic.id, attackElement: basic.element,
+    element: inherited.hybridId ?? powers.at(-1) ?? sign.element,
+  };
 }
 
-export function previewDescendant(parentSignId, signId) {
-  return parentSignId ? predictInheritance(parentSignId, signId) : null;
+export function previewDescendant(parentSignId, signId, ancestor) {
+  return parentSignId ? predictInheritance(parentSignId, signId, ancestor?.powers) : null;
 }
 
 // Vencer un piso desbloquea primero su signo si está cerrado. Si ya lo estaba,

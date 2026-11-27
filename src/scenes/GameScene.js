@@ -1,4 +1,6 @@
+import { configureCamera } from './UIScene.js';
 import Phaser from 'phaser';
+import { primaryElement, POWER_BY_ID } from '../data/elementalPowers.js';
 import { ZODIAC_SIGNS } from '../data/zodiacData.js';
 import { HYBRID_BOSS_SIGNS } from '../data/enemiesData.js';
 import { MAX_MODIFIER_STACKS, SPELL_MODIFIERS } from '../data/spellModifiers.js';
@@ -25,11 +27,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   create({ build, route }) {
+    configureCamera(this);
     this.route = route;
     this.build = build;
     this.floorIndex = 0;
     this.floorsCleared = 0;
     this.elapsed = 0;
+    this.hostileElapsed = 0;
     this.nextLight = 0;
     this.freeze = 0;
     this.modal = null;
@@ -40,7 +44,9 @@ export class GameScene extends Phaser.Scene {
     this.actions = [];
     this.canTint = this.game.renderer.type === Phaser.WEBGL;
     this.random = Math.random;
+    this.encounteredBosses = [];
     this.player = new Player(this, build, ROOM_CENTER.x, ROOM_CENTER.y);
+    this.player.modifiers = { ...saveSystem.progress.bonuses };
     this.input.keyboard.addKey('ESC', true).on('down', () => this.togglePause());
     this.beginFloor();
     this.scene.launch('hud', { world: this });
@@ -53,7 +59,6 @@ export class GameScene extends Phaser.Scene {
 
   beginFloor() {
     this.floor = generateFloor(this.route[this.floorIndex], this.floorIndex, this.random);
-    this.rewardCount = 0;
     this.enterRoom(this.floor.startId);
     if (this.scene.isActive('hud')) this.hud.renderFloor();
   }
@@ -70,7 +75,11 @@ export class GameScene extends Phaser.Scene {
     this.player.charge = 0;
     this.roomView.light(this.elapsed, this.player);
     this.doorCooldown = this.elapsed + 235;
-    if (!this.room.cleared) this.spawnRoom();
+    this.player.roomShield = 0;
+    if (!this.room.cleared) {
+      this.spawnRoom();
+      this.applyRoomPowers();
+    }
   }
 
   clearRoomObjects() {
@@ -92,9 +101,12 @@ export class GameScene extends Phaser.Scene {
     const element = this.floor.element;
     const difficulty = 1 + 0.15 * this.floorIndex;
     if (this.room.kind === 'boss') {
-      const signs = HYBRID_BOSS_SIGNS[element] ?? ZODIAC_SIGNS.filter((sign) => sign.element === element).map((sign) => sign.id);
+      const signs = HYBRID_BOSS_SIGNS[element] ?? ZODIAC_SIGNS.filter((sign) => sign.element === primaryElement(element)).map((sign) => sign.id);
       const signId = signs[Math.floor(this.random() * signs.length)];
       this.boss = new Boss(this, { ...ROOM_CENTER, element, difficulty, signId });
+      this.encounteredBosses.push({
+        signId, title: this.boss.title, element, powers: [...this.boss.patterns], defeated: false,
+      });
       this.enemies.push(this.boss);
       return;
     }
@@ -109,6 +121,23 @@ export class GameScene extends Phaser.Scene {
       const position = positions.splice(Math.floor(this.random() * positions.length), 1)[0];
       const archetype = archetypes[(firstArchetype + index) % archetypes.length];
       this.enemies.push(new Enemy(this, { ...position, element, archetype, difficulty }));
+    }
+  }
+
+  applyRoomPowers() {
+    const { affinity, powers } = this.build;
+    if (!this.enemies.length || !powers.length) return;
+    this.player.roomShield = affinity.entryShield ?? 0;
+    if (affinity.entryHeal) this.player.heal(affinity.entryHeal);
+    for (const enemy of this.enemies) {
+      if (affinity.entryRoot) enemy.rootRemaining = affinity.entryRoot;
+      if (affinity.entryPoison) enemy.applyPoison(affinity.entryPoison);
+      if (affinity.entryDamage) enemy.takeDamage(affinity.entryDamage);
+    }
+    const entryPowers = powers.filter((id) => Object.keys(POWER_BY_ID[id].effect)
+      .some((key) => key.startsWith('entry') || key === 'roomSpeed'));
+    if (entryPowers.length && this.scene.isActive('hud')) {
+      this.showNotice(entryPowers.map((id) => POWER_BY_ID[id].name.toUpperCase()).join(' + '), this.player.color);
     }
   }
 
@@ -133,12 +162,17 @@ export class GameScene extends Phaser.Scene {
     // Limitar el paso evita atravesar muros tras volver a una pestaña inactiva.
     const delta = Math.min(frameDelta, 30);
     this.elapsed += delta;
+    const enemyDelta = delta * (this.build.affinity.roomSpeed ?? 1);
+    this.hostileElapsed = (this.hostileElapsed ?? 0) + enemyDelta;
     this.player.update(delta);
     this.runActions();
     const enemyCount = this.enemies.length;
-    for (let index = 0; index < enemyCount; index++) this.enemies[index].update(delta);
+    for (let index = 0; index < enemyCount; index++) this.enemies[index].update(enemyDelta);
     const projectileCount = this.projectiles.length;
-    for (let index = 0; index < projectileCount; index++) this.projectiles[index].update(delta);
+    for (let index = 0; index < projectileCount; index++) {
+      const projectile = this.projectiles[index];
+      if (projectile.active) projectile.update(projectile.hostile ? enemyDelta : delta);
+    }
     this.removeInactive();
 
     if (!this.player.alive) {
@@ -197,7 +231,7 @@ export class GameScene extends Phaser.Scene {
       if (final) this.record('victory');
       this.hud.floorCleared(unlocked, final, () => {
         if (final) {
-          this.finishScene('zodiac');
+          this.finishScene('menu');
           return;
         }
         this.hud.closeModal();
@@ -209,26 +243,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.heal(Math.ceil(this.player.stats.maxHealth * 0.07));
-    const candidates = SPELL_MODIFIERS.filter((modifier) => (
-      (this.player.modifiers[modifier.id] ?? 0) < MAX_MODIFIER_STACKS[modifier.id]
-      && (this.player.spell.speed || this.player.spell.kind === 'summon' || !['fork', 'needle'].includes(modifier.id))
-      && (modifier.id !== 'growth' || this.player.spell.radius || this.player.spell.kind === 'cone')
-    ));
-    if (this.rewardCount < 2 && candidates.length) {
-      this.rewardCount++;
-      const offer = [];
-      while (offer.length < 3 && candidates.length) {
-        offer.push(candidates.splice(Math.floor(this.random() * candidates.length), 1)[0]);
-      }
-      this.modal = 'reward';
-      this.hud.offerModifiers(offer, (id) => {
-        this.player.addModifier(id);
-        this.hud.closeModal();
-        this.modal = null;
-      });
-    } else {
-      this.showNotice('SALA DESPEJADA', 0xcfbea7);
+    this.showNotice('SALA DESPEJADA', 0xcfbea7);
+  }
+
+  victoryChoices() {
+    const candidates = SPELL_MODIFIERS.filter(({ id }) =>
+      (this.player.modifiers[id] ?? 0) < MAX_MODIFIER_STACKS[id]);
+    const choices = [];
+    while (choices.length < 3 && candidates.length) {
+      choices.push(candidates.splice(Math.floor(this.random() * candidates.length), 1)[0].id);
     }
+    return choices;
   }
 
   togglePause() {
@@ -251,8 +276,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   record(outcome) {
-    const { signId, parentSignId, aspectId, hybridId } = this.build;
-    saveSystem.completeRun({ signId, parentSignId, aspectId, hybridId, outcome, floors: this.floorsCleared });
+    saveSystem.completeRun({
+      build: this.build, outcome, floors: this.floorsCleared, bosses: this.encounteredBosses,
+      reward: outcome === 'victory' ? this.victoryChoices() : [],
+    });
   }
 
   finishScene(key) {
@@ -269,7 +296,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   enemyDefeated(enemy) {
-    if (enemy === this.boss) this.hitStop(90);
+    if (enemy === this.boss) {
+      this.encounteredBosses.at(-1).defeated = true;
+      this.hitStop(90);
+    }
     this.spark(enemy.x, enemy.y, enemy.color);
   }
 
@@ -286,9 +316,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   dashTrail(player) {
-    const ghost = this.add.image(player.x, player.y, 'player', 0).setScale(1.5).setAlpha(0.43).setDepth(9);
+    const ghost = this.add.image(player.x, player.y, 'player', player.sprite.frame.name).setFlipX(player.sprite.flipX).setScale(0.88).setAlpha(0.43).setDepth(9);
     if (this.canTint) ghost.setTint(player.color);
-    this.fade(ghost, 135, 1.3);
+    this.fade(ghost, 135, 0.98);
   }
 
   fade(object, duration, scale) {
@@ -303,7 +333,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   after(delay, callback) {
-    this.actions.push({ time: this.elapsed + delay, callback });
+    this.actions.push({ time: this.hostileElapsed + delay, callback });
   }
 
   runActions() {
@@ -312,16 +342,48 @@ export class GameScene extends Phaser.Scene {
     const pending = this.actions;
     this.actions = [];
     for (const action of pending) {
-      if (action.time <= this.elapsed) action.callback();
+      if (action.time <= this.hostileElapsed) action.callback();
       else this.actions.push(action);
     }
   }
 
+  aimWarning(x, y, angle, delay, action) {
+    const marker = this.add.graphics().setDepth(5);
+    marker.lineStyle(1, 0xffde82, 0.95);
+    for (let offset = 10; offset < 50; offset += 8) {
+      marker.lineBetween(x + Math.cos(angle) * offset, y + Math.sin(angle) * offset,
+        x + Math.cos(angle) * (offset + 4), y + Math.sin(angle) * (offset + 4));
+    }
+    this.resetEffects.add(marker);
+    this.after(delay, () => {
+      this.resetEffects.delete(marker);
+      marker.destroy();
+      action();
+    });
+  }
+
   telegraph(x, y, radius, color, delay, action) {
     const marker = this.add.graphics().setDepth(5);
-    marker.fillStyle(color, 0.16).fillCircle(x, y, radius);
-    marker.lineStyle(1, color, 0.85).strokeCircle(x, y, radius);
+    let remaining = delay;
+    const draw = () => {
+      marker.clear();
+      const progress = 1 - Math.max(0, remaining) / delay;
+      marker.lineStyle(1, 0xffde82, 0.95);
+      for (let segment = 0; segment < 10; segment++) {
+        const angle = segment * Math.PI / 5;
+        marker.beginPath().arc(x, y, radius, angle, angle + Math.PI / 8).strokePath();
+      }
+      marker.fillStyle(color, 0.50).fillRect(x - radius * 0.55, y - 2, radius * 1.1 * progress, 4);
+    };
+    draw();
+    const pulse = (step) => {
+      if (!marker.active) return;
+      remaining -= step;
+      draw();
+      if (remaining > 0) this.after(Math.min(45, remaining), () => pulse(Math.min(45, remaining)));
+    };
     this.resetEffects.add(marker);
+    this.after(45, () => pulse(45));
     this.after(delay, () => {
       this.resetEffects.delete(marker);
       marker.destroy();

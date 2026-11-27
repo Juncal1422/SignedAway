@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
-import { ELEMENTS } from '../data/zodiacData.js';
-import { MAX_MODIFIER_STACKS } from '../data/spellModifiers.js';
+import { ZODIAC_SIGNS } from '../data/zodiacData.js';
 import { ROOM_BOTTOM, ROOM_LEFT, ROOM_RIGHT, ROOM_TOP } from '../systems/MapGenerator.js';
 import { affinityColor } from '../systems/GeneticSystem.js';
 
@@ -17,7 +16,8 @@ export class Player {
     this.health = build.stats.maxHealth;
     this.radius = 6;
     this.color = affinityColor(build.element);
-    this.frameRow = Object.keys(ELEMENTS).indexOf(build.elements[0]) * 4;
+    this.attackFrame = 16 + ZODIAC_SIGNS.findIndex((sign) => sign.id === build.basicSignId);
+    this.idleFrame = 12 * ZODIAC_SIGNS.findIndex((sign) => sign.id === build.signId);
     this.modifiers = {};
     this.alive = true;
     this.dashCooldown = 0;
@@ -27,7 +27,9 @@ export class Player {
     this.charge = 0;
     this.aimAngle = 0;
     this.trailTimer = 0;
-    this.sprite = scene.add.sprite(x, y, 'player', 0).setScale(1.5).setDepth(12);
+    this.sprite = scene.add.sprite(x, y, 'player', this.idleFrame).setScale(0.88).setDepth(12);
+    this.powerSigil = scene.add.graphics().setDepth(2);
+    this.pointerWorld = new Phaser.Math.Vector2();
     this.keys = scene.input.keyboard.addKeys(movementKeys, true);
     this.arrows = scene.input.keyboard.createCursorKeys();
     // Un toque puede comenzar y terminar entre dos frames. Los eventos
@@ -47,6 +49,7 @@ export class Player {
   }
 
   update(delta) {
+    this.actionTimer = Math.max(0, (this.actionTimer ?? 0) - delta);
     this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     this.dashRemaining = Math.max(0, this.dashRemaining - delta);
     this.invulnerable = Math.max(0, this.invulnerable - delta);
@@ -65,7 +68,8 @@ export class Player {
     this.pointerCastRequested = false;
     this.castRequested = false;
     if (mouseCasting) {
-      this.aimAngle = Math.atan2(pointer.y - this.y, pointer.x - this.x);
+      this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld);
+      this.aimAngle = Math.atan2(this.pointerWorld.y - this.y, this.pointerWorld.x - this.x);
     } else if (moving) {
       this.aimAngle = moveAngle;
     }
@@ -74,6 +78,7 @@ export class Player {
     this.dashRequested = false;
     if (dashRequested && this.dashCooldown === 0) {
       this.dashRemaining = dashDuration;
+      this.playAction('dash', dashDuration);
       this.dashCooldown = this.stats.dashCooldown;
       this.invulnerable = Math.max(this.invulnerable, dashDuration + 22);
       this.dashAngle = moving ? moveAngle : this.aimAngle;
@@ -89,12 +94,18 @@ export class Player {
     } else if (moving) {
       this.move(moveAngle, this.stats.moveSpeed * delta / 1000);
     }
-    if (moving || this.dashRemaining) {
-      if (!this.sprite.anims.isPlaying) this.sprite.play('walk');
-    } else {
-      this.sprite.stop().setFrame(0);
+    this.sprite.setFlipX(Math.cos(this.dashRemaining ? this.dashAngle : this.aimAngle) < 0);
+    if (!this.actionTimer) {
+      if (moving) this.sprite.play(`${this.build.signId}-walk`, true);
+      else this.sprite.stop().setFrame(this.idleFrame);
     }
-    this.sprite.setAlpha(this.invulnerable > 0 ? 0.56 : 1);
+    this.powerSigil.clear();
+    if (this.build.powers.length) {
+      this.powerSigil.fillStyle(this.color, 0.7);
+      this.powerSigil.fillRect(this.x - 8, this.y + 9, 3, 1);
+      this.powerSigil.fillRect(this.x + 6, this.y + 9, 3, 1);
+      if (this.roomShield) this.powerSigil.lineStyle(1, this.color).strokeCircle(this.x, this.y, 12);
+    }
     if (casting && this.castCooldown === 0) {
       if (!this.spell.chargeTime || (this.charge += delta) >= this.spell.chargeTime) {
         this.cast();
@@ -106,7 +117,8 @@ export class Player {
   }
 
   pointerInRoom(pointer) {
-    return pointer.x >= ROOM_LEFT && pointer.x <= ROOM_RIGHT && pointer.y >= ROOM_TOP && pointer.y <= ROOM_BOTTOM;
+    const point = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld);
+    return point.x >= ROOM_LEFT && point.x <= ROOM_RIGHT && point.y >= ROOM_TOP && point.y <= ROOM_BOTTOM;
   }
 
   move(angle, distance) {
@@ -116,14 +128,21 @@ export class Player {
     if (!this.scene.blocked(this.x, y, this.radius)) this.sprite.y = y;
   }
 
+  playAction(pose, duration) {
+    this.actionTimer = duration;
+    this.actionPose = pose;
+    this.sprite.play(`${this.build.signId}-${pose}`);
+  }
+
   cast() {
+    if (!this.dashRemaining && !(this.actionPose === 'hurt' && this.actionTimer)) this.playAction('attack', 140);
     const spell = this.spell;
     const aim = this.aimAngle;
     this.castCooldown = spell.cooldown;
     const projectile = {
       owner: this, x: this.x + Math.cos(aim) * 9, y: this.y + Math.sin(aim) * 9,
       angle: aim, speed: spell.speed, lifetime: spell.speed ? 1000 * spell.range / spell.speed : 240,
-      damage: spell.damage, color: this.color, frame: this.frameRow,
+      damage: spell.damage, color: this.color, frame: this.attackFrame,
       modifiers: this.modifiers,
     };
 
@@ -131,7 +150,7 @@ export class Player {
       const spread = Phaser.Math.DegToRad(spell.spreadDegrees);
       for (let index = 0; index < spell.count; index++) {
         const offset = spread * (index / (spell.count - 1) - 0.5);
-        this.scene.addProjectile({ ...projectile, angle: aim + offset, frame: this.frameRow + 2 });
+        this.scene.addProjectile({ ...projectile, angle: aim + offset, frame: this.attackFrame });
       }
     } else if (spell.kind === 'pulse' || spell.kind === 'shield' || spell.kind === 'cone') {
       if (spell.kind === 'shield') this.shieldRemaining = spell.duration;
@@ -147,29 +166,35 @@ export class Player {
       const y = this.y + Math.sin(aim) * placementDistance;
       const blocked = this.scene.blocked(x, y, 6);
       this.scene.addProjectile({
-        ...projectile, x: blocked ? this.x : x, y: blocked ? this.y : y, frame: this.frameRow + 3,
+        ...projectile, x: blocked ? this.x : x, y: blocked ? this.y : y, frame: this.attackFrame,
         kind: spell.kind, lifetime: spell.duration, radius: spell.radius ?? 0,
       });
     } else if (spell.kind === 'orbit') {
       for (const angle of [aim, aim + Math.PI]) {
         this.scene.addProjectile({
           ...projectile, angle, kind: 'orbit', lifetime: spell.duration,
-          radius: Math.max(5, spell.radius - 27), hitInterval: 360, frame: this.frameRow + 1,
+          radius: Math.max(5, spell.radius - 27), hitInterval: 360, frame: this.attackFrame,
         });
       }
     } else {
       this.scene.addProjectile({
         ...projectile, kind: spell.kind, pierce: spell.pierce, bounces: spell.bounces,
         lifetime: projectile.lifetime * (spell.kind === 'returning' ? 2.35 : 1),
-        frame: this.frameRow + (spell.kind === 'returning' ? 2 : 0),
+        frame: this.attackFrame,
       });
     }
   }
 
   takeDamage(amount) {
     if (!this.alive || this.invulnerable > 0 || this.shieldRemaining > 0) return false;
-    this.health = Math.max(0, this.health - amount);
+    if (this.roomShield > 0) {
+      this.roomShield--;
+      this.invulnerable = 260;
+      return true;
+    }
+    this.health = Math.max(0, this.health - amount * (1 - (this.build.affinity.armor ?? 0)));
     this.invulnerable = 600;
+    this.playAction('hurt', 140);
     this.scene.hitStop(54);
     this.scene.cameras.main.shake(105, 0.008);
     this.alive = this.health > 0;
@@ -180,10 +205,4 @@ export class Player {
     this.health = Math.min(this.stats.maxHealth, this.health + amount);
   }
 
-  addModifier(id) {
-    const previous = this.modifiers[id] ?? 0;
-    if (previous >= MAX_MODIFIER_STACKS[id]) return false;
-    this.modifiers[id] = previous + 1;
-    return true;
-  }
 }

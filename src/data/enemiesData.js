@@ -36,3 +36,25 @@ export const HYBRID_BOSS_SIGNS = {
   magma: ['aries', 'leo', 'capricorn'],
   storm: ['aquarius', 'cancer', 'pisces'],
 };
+
+export const ATTACK_DESCRIPTIONS = {
+  ram: ['Embestida', 'Marca su posición y carga en línea recta.'],
+  fan: ['Abanico', 'Dispara varios proyectiles hacia ti.'],
+  eruption: ['Erupción', 'Marca tu posición y dos puntos a los lados.'],
+  shockwave: ['Onda de choque', 'Carga una explosión y dispara en todas direcciones.'],
+  ward: ['Baluarte', 'Reduce el daño recibido y prepara una zona de impacto.'],
+  cross: ['Cruz', 'Lanza dos cruces de proyectiles giradas entre sí.'],
+  spiral: ['Espiral', 'Dispara en círculos, girando entre descargas.'],
+  mirror: ['Espejo', 'Dispara un abanico y vuelve a apuntar antes del segundo.'],
+  pool: ['Charco', 'Deja una zona dañina persistente en tu posición.'],
+  pulse: ['Pulso', 'Combina un anillo de disparos y una explosión localizada.'],
+  lance: ['Lanza', 'Carga y dispara un proyectil rápido y estrecho.'],
+  summon: ['Invocación', 'Llama a un luchador y dispara en abanico.'],
+  magma: ['Charco de magma', 'Deja lava activa durante aproximadamente un segundo.'],
+  storm: ['Descarga', 'Lanza dos disparos y marca una explosión bajo tus pies.'],
+};
+export const ARCHETYPE_DESCRIPTIONS = {
+  melee: ['Acechador', 'Se acerca y avisa antes de golpear a corta distancia.'],
+  ranged: ['Tirador', 'Conserva distancia y apunta disparos hacia ti.'],
+  elemental: ['Custodio', 'Usa el ataque especial de su elemento.'],
+};

@@ -18,7 +18,7 @@ export class Boss extends Enemy {
     this.phase = 1;
     this.attackIndex = 0;
     this.attackTimer = 780;
-    this.sprite.setTexture('bosses', ZODIAC_SIGNS.findIndex((sign) => sign.id === signId)).setScale(1.8);
+    this.sprite.setTexture('bosses', ZODIAC_SIGNS.findIndex((sign) => sign.id === signId)).setScale(1.42);
   }
 
   update(delta) {

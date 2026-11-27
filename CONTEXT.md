@@ -2,7 +2,7 @@
 
 Roguelite de acción cenital de estética gótica. Cada partida empieza con un
 signo del zodíaco. Al morir, se elige otro signo y el cruce determina el
-hechizo y las estadísticas del siguiente personaje del linaje.
+las afinidades y las estadísticas del siguiente personaje del linaje.
 
 ## Arranque y revisión
 
@@ -18,12 +18,18 @@ npm run preview
 El juego arranca en el título. Usa WASD o flechas para moverte, espacio
 para esquivar, y mantén pulsado el ratón o J para lanzar. Sagitario carga
 su hechizo mientras mantienes pulsado el botón. Abre la pausa con Esc.
-Entra por los arcos, despeja salas, elige mejoras y vence al jefe que marca
-el minimapa. Si caes, selecciona el signo de tu descendiente para ver la
-predicción y confirma para revelar su tirada antes de entrar.
+Entra por los arcos, despeja salas y vence al jefe que marca el minimapa.
+Los avisos tienen contorno amarillo discontinuo. Las áreas dañinas activas
+son rojas, con borde continuo y rayado interior. Los disparos enemigos llevan
+un anillo rojo. Tras vencer el último piso, cobra un bonificador en el menú.
+Las mejoras de victoria se heredan en la misma saga. Si caes, selecciona
+el signo de tu descendiente y confirma para revelar su tirada.
 
-El navegador guarda desbloqueos, el historial de linaje y el último
-ascendiente. El progreso dentro de una expedición pertenece a la sesión
+Los catálogos del menú explican hechizos, aspectos, afinidades, bonificadores,
+enemigos y jefes. El historial incluye los signos, poderes, elementos y
+encuentros. Volver a primera generación archiva la saga y reinicia sus
+desbloqueos, afinidades y bonificadores. El guardado de la versión anterior
+conserva sus generaciones y empieza a registrar jefes en las nuevas. El progreso dentro de una expedición pertenece a la sesión
 activa. Al volver a abrir el juego puedes iniciar otra expedición a partir
 del ascendiente guardado. Si abres el juego desde un lanzador, conserva
 la URL de publicación para mantener el mismo origen del guardado.
@@ -74,11 +80,12 @@ y las señales de combate.
   `predictInheritance` calcula centros e intervalos. `rollInheritance`
   tira una vez por campo, con RNG inyectable para comprobaciones.
   Mantén las reglas independientes de Phaser y del guardado.
-- El signo elegido aporta el patrón del hechizo y su elemento principal.
-  El signo del padre aporta parte de las estadísticas y su afinidad.
-  Un cruce Fuego–Tierra produce Magma y uno Agua–Aire produce Tormenta.
-  Dichos cruces abren pisos que se añaden al final de la ruta. Magma
-  añade daño y quemadura a los impactos. Tormenta ralentiza y encadena.
+- `elementalPowers.js` contiene seis recetas básicas y doce avanzadas.
+  El quincuncio impide una nueva fusión y la oposición permite solo fusiones
+  básicas. La herencia consulta primero las afinidades más recientes que
+  tengan una combinación válida. Cada poder nuevo se suma a los anteriores y
+  conserva el hechizo que ya usaba el linaje. Tiempo ralentiza todo el combate
+  enemigo y Miasma inflige daño al entrar.
 - `spellModifiers.js` define efectos acumulables y límites por mejora.
   `enemiesData.js` separa stats, arquetipos y secuencias de los jefes de
   su comportamiento. Las salas de jefe eligen uno de los tres signos del
@@ -100,13 +107,13 @@ matrices o en la paleta del generador.
 
 | Archivo en `public/assets/` | Disposición |
 | --- | --- |
-| `sprites/player.png` | Cuatro frames de 16×16 para una animación de pasos |
-| `sprites/enemies.png` | Frames de 16×16. Tres columnas por arquetipo y cuatro filas por elemento |
-| `sprites/bosses.png` | Doce frames de 24×24 en orden zodiacal |
-| `sprites/projectiles.png` | Frames de 16×16. Cuatro formas por fila y cuatro filas por elemento |
-| `tilesets/gothic_dungeon_tileset.png` | Ocho tiles de 16×16. Suelos 0–1, muro 2, grieta 3, altar 4, arco 5, escombro 6 y pavimento ritual 7 |
-| `ui/panel_nineslice.png`, `ui/button_nineslice.png` | Marcos de 24×24 con márgenes de 6 px |
-| `ui/icons_zodiac.png` | Doce frames de 16×16 en orden zodiacal |
+| `sprites/player.png` | 12 poses de 32×32 por signo: pasos 0–3, ataque 4–6, dash 7–9 y daño 10–11 |
+| `sprites/enemies.png` | Frames de 32×32. Tres columnas por arquetipo y cuatro filas por elemento |
+| `sprites/bosses.png` | Doce frames de 32×32 en orden zodiacal |
+| `sprites/projectiles.png` | Frames de 32×32. Cuatro filas de disparos enemigos y doce siluetas zodiacales |
+| `tilesets/gothic_dungeon_tileset.png` | Ocho tiles de 32×32. Suelos 0–1, muro 2, grieta 3, altar 4, arco 5, escombro 6 y pavimento ritual 7 |
+| `ui/panel_nineslice.png`, `ui/button_nineslice.png` | Marcos de 32×32 con márgenes de 6 px |
+| `ui/icons_zodiac.png` | Doce frames de 32×32 en orden zodiacal |
 
 Las filas por elemento siguen el orden Fuego, Tierra, Aire, Agua.
 Conserva la cuadrícula de frames al editar. Si añades un recurso,

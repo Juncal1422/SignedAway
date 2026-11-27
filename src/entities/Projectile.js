@@ -35,9 +35,10 @@ export class Projectile {
     this.modifiers = Object.entries(options.modifiers ?? {}).map(([id, stacks]) => [MODIFIER_BY_ID[id], stacks]);
     this.sprite = scene.add.image(options.x, options.y, 'projectiles', this.frame)
       .setDepth(this.hostile ? 8 : 10)
-      .setScale(this.hostile ? 1.18 : 1.38);
+      .setScale(this.hostile ? 0.66 : 0.84);
     this.sprite.setRotation(this.angleRadians);
-    if (scene.canTint) this.sprite.setTint(this.color);
+    if (scene.canTint && this.hostile) this.sprite.setTint(0xffb0ac);
+    this.hostileMarker = this.hostile && this.isMobile ? scene.add.graphics().setDepth(7) : null;
     this.glow = scene.add.image(options.x, options.y, 'element-glow')
       .setDepth(3).setBlendMode(1).setAlpha(this.hostile ? 0.28 : 0.58);
     if (scene.canTint) this.glow.setTint(this.color);
@@ -80,6 +81,9 @@ export class Projectile {
     }
     this.glow.setPosition(this.x, this.y);
 
+    if (this.hostileMarker) {
+      this.hostileMarker.clear().lineStyle(1, 0xff596a, 0.85).strokeCircle(this.x, this.y, 6);
+    }
     if (this.zone) this.drawZone();
     if (this.kind === 'summon') {
       // Un guardián busca y dispara en intervalos independientes de su vida.
@@ -94,10 +98,13 @@ export class Projectile {
     for (const target of targets) {
       if (!this.active || !target.alive) continue;
       if (!this.canHit(target)) continue;
-      if (!target.takeDamage(this.damage)) continue;
+      const bonus = this.affinity.chaos && this.scene.random() < this.affinity.chaos ? 1.5 : 1;
+      if (!target.takeDamage(this.damage * bonus)) continue;
       this.hitTimes.set(target, this.age);
       this.scene.spark(target.x, target.y, this.color);
       if (this.affinity.burn) target.applyBurn(this.damage * this.affinity.burn);
+      if (target.alive && this.affinity.poison) target.applyPoison(this.damage * this.affinity.poison);
+      if (target.alive && this.affinity.pull) target.pullToward(this.owner, this.affinity.pull);
       if (this.affinity.slow) target.applySlow(this.affinity.slow);
       if (this.affinity.chain) this.scene.chainDamage(target, this.damage * this.affinity.chain, 1, this.color);
       for (const [modifier, stacks] of this.modifiers) modifier.onHit?.(this, target, stacks);
@@ -160,7 +167,18 @@ export class Projectile {
   drawZone() {
     this.zone.clear();
     const radius = this.currentRadius;
-    if (this.kind === 'cone') {
+    if (this.hostile) {
+      this.zone.fillStyle(0xe14d62, 0.30).fillCircle(this.x, this.y, radius);
+      this.zone.lineStyle(2, 0xff6678, 0.95).strokeCircle(this.x, this.y, radius);
+      this.zone.lineStyle(1, 0xfde2ba, 0.44);
+      for (let step = -Math.floor(radius / 7); step <= Math.floor(radius / 7); step++) {
+        const offset = step * 7;
+        const extent = Math.sqrt(radius ** 2 - offset ** 2) * 0.84;
+        const diagonal = Math.SQRT1_2;
+        this.zone.lineBetween(this.x + (offset - extent) * diagonal, this.y + (offset + extent) * diagonal,
+          this.x + (offset + extent) * diagonal, this.y + (offset - extent) * diagonal);
+      }
+    } else if (this.kind === 'cone') {
       this.zone.fillStyle(this.color, 0.16);
       this.zone.slice(this.x, this.y, radius, this.angleRadians - this.spreadRadians / 2, this.angleRadians + this.spreadRadians / 2);
       this.zone.fillPath();
@@ -187,5 +205,6 @@ export class Projectile {
     this.sprite.destroy();
     this.glow.destroy();
     this.zone?.destroy();
+    this.hostileMarker?.destroy();
   }
 }
