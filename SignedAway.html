@@ -18,10 +18,12 @@
         const path = 'launcher/signed-away.js';
 
         async function getRemoteArchive() {
-          const signal = AbortSignal.timeout(5500);
           let ref = 'main';
           try {
-            const response = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, { signal, cache: 'no-store' });
+            const response = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, {
+              signal: AbortSignal.timeout(2800),
+              cache: 'no-store',
+            });
             if (response.ok) {
               const head = (await response.json()).object?.sha;
               if (/^[a-f0-9]{40}$/.test(head)) ref = head;
@@ -29,7 +31,10 @@
           } catch {
             // GitHub Raw puede seguir respondiendo si la consulta de la rama falla.
           }
-          const response = await fetch(`https://raw.githubusercontent.com/${repository}/${ref}/${path}`, { signal, cache: 'no-store' });
+          const response = await fetch(`https://raw.githubusercontent.com/${repository}/${ref}/${path}`, {
+            signal: AbortSignal.timeout(12000),
+            cache: 'no-store',
+          });
           if (!response.ok) throw new Error(`GitHub devolvió HTTP ${response.status}.`);
           const archive = (await response.text()).match(/^globalThis\.signedAwayArchive = "([a-zA-Z0-9+/=]+)";$/m)?.[1];
           if (!archive) throw new Error('El paquete de GitHub tiene un formato inválido.');
