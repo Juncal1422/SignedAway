@@ -174,7 +174,7 @@ export class Projectile {
     const enemy = this.scene.enemies.find((target) => target.alive && Math.hypot(target.x - this.x, target.y - this.y) < 140);
     if (!enemy) return;
     this.scene.addProjectile({
-      x: this.x, y: this.y, owner: this.owner, secondary: true,
+      x: this.x, y: this.y, owner: this.owner,
       angle: Math.atan2(enemy.y - this.y, enemy.x - this.x), damage: this.baseDamage,
       speed: 250, lifetime: 620, color: this.color, frame: this.frame,
       modifiers: this.owner.modifiers,
