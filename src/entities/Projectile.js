@@ -14,9 +14,12 @@ export class Projectile {
     this.speed = options.speed ?? 0;
     this.damage = options.damage;
     this.baseDamage = options.damage;
+    this.affinity = this.hostile ? {} : (this.owner?.build?.affinity ?? {});
+    this.damage *= this.affinity.damageScale ?? 1;
     this.lifetime = options.lifetime ?? 320;
     this.remainingPierce = options.pierce ?? 0;
     this.basePierce = this.remainingPierce;
+    this.remainingPierce += this.affinity.pierce ?? 0;
     this.bounces = options.bounces ?? 0;
     this.radius = options.radius ?? 0;
     this.currentRadius = this.radius;
@@ -94,10 +97,13 @@ export class Projectile {
       if (!target.takeDamage(this.damage)) continue;
       this.hitTimes.set(target, this.age);
       this.scene.spark(target.x, target.y, this.color);
+      if (this.affinity.burn) target.applyBurn(this.damage * this.affinity.burn);
+      if (this.affinity.slow) target.applySlow(this.affinity.slow);
+      if (this.affinity.chain) this.scene.chainDamage(target, this.damage * this.affinity.chain, 1, this.color);
       for (const [modifier, stacks] of this.modifiers) modifier.onHit?.(this, target, stacks);
       if (this.kind === 'trap') {
         this.scene.addProjectile({
-          x: this.x, y: this.y, kind: 'area', damage: this.damage * 0.65,
+          x: this.x, y: this.y, kind: 'area', damage: this.baseDamage * 0.65,
           lifetime: 180, radius: this.currentRadius * 1.12, color: this.color, frame: this.frame,
           owner: this.owner, secondary: true,
         });

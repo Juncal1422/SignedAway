@@ -29,9 +29,15 @@ export class SaveSystem {
   }
 
   read() {
+    let raw;
     try {
-      const raw = this.storage?.getItem(storageKey);
-      if (!raw) return;
+      raw = this.storage?.getItem(storageKey);
+    } catch {
+      this.canPersist = false;
+      return;
+    }
+    if (!raw) return;
+    try {
       const saved = JSON.parse(raw);
       if (saved?.version !== version) return;
       const signs = Array.isArray(saved.unlockedSigns) ? saved.unlockedSigns.filter(isSign) : [];
@@ -45,7 +51,8 @@ export class SaveSystem {
         pendingAncestor: isSign(saved.pendingAncestor) ? saved.pendingAncestor : null,
       };
     } catch {
-      this.canPersist = false;
+      // Si se dañó el JSON se conservan los valores iniciales. La siguiente
+      // escritura puede recuperar la partida porque el almacén sí responde.
     }
   }
 
@@ -69,12 +76,6 @@ export class SaveSystem {
     this.progress.unlockedZones.push(zoneId);
     this.write();
     return true;
-  }
-
-  beginRun() {
-    // La selección y el RNG se consumen una sola vez al confirmar el hijo.
-    this.progress.pendingAncestor = null;
-    this.write();
   }
 
   completeRun({ signId, parentSignId, aspectId, hybridId, outcome, floors }) {

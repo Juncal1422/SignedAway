@@ -3,7 +3,7 @@
 // hooks mediante Projectile, incluidas las invocaciones, trampas y escudos.
 export const SPELL_MODIFIERS = [
   {
-    id: 'fork', name: 'Bifurcación', description: 'Dos proyectiles secundarios al lanzar.',
+    id: 'fork', name: 'Bifurcación', shortName: 'Bif', description: 'Dos proyectiles secundarios al lanzar.',
     onSpawn(projectile) {
       if (projectile.secondary || !projectile.isMobile) return;
       for (const offset of [-0.28, 0.28]) {
@@ -12,19 +12,19 @@ export const SPELL_MODIFIERS = [
     },
   },
   {
-    id: 'focus', name: 'Foco arcano', description: 'Cada carga aumenta el daño un 25%.',
+    id: 'focus', name: 'Foco arcano', shortName: 'Foco', description: 'Cada carga aumenta el daño un 25%.',
     onSpawn(projectile, stacks) {
       projectile.damage *= 1 + 0.25 * stacks;
     },
   },
   {
-    id: 'needle', name: 'Perforación', description: 'Atraviesa a un enemigo por carga.',
+    id: 'needle', name: 'Perforación', shortName: 'Perf', description: 'Atraviesa a un enemigo por carga.',
     onSpawn(projectile, stacks) {
       if (projectile.isMobile) projectile.remainingPierce += stacks;
     },
   },
   {
-    id: 'growth', name: 'Expansión', description: 'El área crece hasta un 35% por carga.',
+    id: 'growth', name: 'Expansión', shortName: 'Área', description: 'El área crece hasta un 35% por carga.',
     onUpdate(projectile, stacks) {
       if (projectile.radius > 0) {
         const progress = Math.min(1, projectile.age / Math.min(450, projectile.lifetime));
@@ -33,19 +33,19 @@ export const SPELL_MODIFIERS = [
     },
   },
   {
-    id: 'embers', name: 'Ascuas', description: 'Quema al enemigo durante 2 segundos.',
+    id: 'embers', name: 'Ascuas', shortName: 'Ascuas', description: 'Quema al enemigo durante 2 segundos.',
     onHit(projectile, enemy, stacks) {
       enemy.applyBurn(projectile.damage * 0.20 * stacks);
     },
   },
   {
-    id: 'frost', name: 'Escarcha', description: 'Ralentiza al enemigo durante 1,2 segundos.',
+    id: 'frost', name: 'Escarcha', shortName: 'Hielo', description: 'Ralentiza al enemigo durante 1,2 segundos.',
     onHit(projectile, enemy, stacks) {
       enemy.applySlow(Math.max(0.35, 1 - 0.17 * stacks));
     },
   },
   {
-    id: 'chain', name: 'Descarga', description: 'Salta a un enemigo cercano por carga.',
+    id: 'chain', name: 'Descarga', shortName: 'Rayo', description: 'Salta a un enemigo cercano por carga.',
     onHit(projectile, enemy, stacks) {
       projectile.scene.chainDamage(enemy, projectile.damage * 0.45, stacks, projectile.color);
     },
