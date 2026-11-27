@@ -1,6 +1,17 @@
 import { ELEMENTS, ZODIAC_BY_ID, ZODIAC_SIGNS } from '../data/zodiacData.js';
 import { HYBRID_ELEMENTS, predictInheritance, rollInheritance } from '../data/astrologyTable.js';
 
+// La afinidad heredada añade un efecto menor al patrón elegido. Magma y
+// Tormenta usan reglas propias que también distinguen el combate de sus linajes.
+const affinities = {
+  fire: { burn: 0.08 },
+  water: { slow: 0.86 },
+  air: { pierce: 1 },
+  earth: { damageScale: 1.10 },
+  magma: { burn: 0.14, damageScale: 1.09 },
+  storm: { slow: 0.83, chain: 0.32 },
+};
+
 const hybridsById = Object.fromEntries(Object.values(HYBRID_ELEMENTS).map((element) => [element.id, element]));
 
 export function affinityColor(element) {
@@ -16,7 +27,8 @@ export function createDescendant({ parentSignId = null, signId, random = Math.ra
     signId, aspectId: null, elements: [sign.element], hybridId: null,
     stats: { ...sign.stats }, spell: { ...sign.spell },
   };
-  return { ...inherited, parentSignId, element: inherited.hybridId ?? inherited.elements[0] };
+  const affinity = affinities[inherited.hybridId ?? inherited.elements[1]] ?? {};
+  return { ...inherited, parentSignId, element: inherited.hybridId ?? inherited.elements[0], affinity };
 }
 
 export function previewDescendant(parentSignId, signId) {

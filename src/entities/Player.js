@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ELEMENTS } from '../data/zodiacData.js';
 import { MAX_MODIFIER_STACKS } from '../data/spellModifiers.js';
+import { ROOM_BOTTOM, ROOM_LEFT, ROOM_RIGHT, ROOM_TOP } from '../systems/MapGenerator.js';
 import { affinityColor } from '../systems/GeneticSystem.js';
 
 const dashDuration = 144;
@@ -29,6 +30,13 @@ export class Player {
     this.sprite = scene.add.sprite(x, y, 'player', 0).setScale(1.5).setDepth(12);
     this.keys = scene.input.keyboard.addKeys(movementKeys, true);
     this.arrows = scene.input.keyboard.createCursorKeys();
+    // Un toque puede comenzar y terminar entre dos frames. Los eventos
+    // guardan la acción hasta el siguiente paso de simulación.
+    this.keys.dash.on('down', () => { if (!scene.modal) this.dashRequested = true; });
+    this.keys.fire.on('down', () => { if (!scene.modal) this.castRequested = true; });
+    scene.input.on('pointerdown', (pointer) => {
+      if (!scene.modal && this.pointerInRoom(pointer)) this.pointerCastRequested = true;
+    });
   }
 
   get x() { return this.sprite.x; }
@@ -48,16 +56,23 @@ export class Player {
     const vertical = Number(this.keys.down.isDown || this.arrows.down.isDown) - Number(this.keys.up.isDown || this.arrows.up.isDown);
     const moving = Boolean(horizontal || vertical);
     const moveAngle = moving ? Math.atan2(vertical, horizontal) : this.aimAngle;
-    const mouseCasting = this.scene.input.activePointer.leftButtonDown();
-    const casting = mouseCasting || this.keys.fire.isDown;
+    const pointer = this.scene.input.activePointer;
+    const heldMouse = pointer.leftButtonDown() && this.pointerInRoom(pointer);
+    const mouseCasting = heldMouse || this.pointerCastRequested;
+    const casting = this.spell.chargeTime
+      ? heldMouse || this.keys.fire.isDown
+      : mouseCasting || this.keys.fire.isDown || this.castRequested;
+    this.pointerCastRequested = false;
+    this.castRequested = false;
     if (mouseCasting) {
-      const pointer = this.scene.input.activePointer;
       this.aimAngle = Math.atan2(pointer.y - this.y, pointer.x - this.x);
     } else if (moving) {
       this.aimAngle = moveAngle;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keys.dash) && this.dashCooldown === 0) {
+    const dashRequested = this.dashRequested;
+    this.dashRequested = false;
+    if (dashRequested && this.dashCooldown === 0) {
       this.dashRemaining = dashDuration;
       this.dashCooldown = this.stats.dashCooldown;
       this.invulnerable = Math.max(this.invulnerable, dashDuration + 22);
@@ -88,6 +103,10 @@ export class Player {
     } else if (!casting) {
       this.charge = 0;
     }
+  }
+
+  pointerInRoom(pointer) {
+    return pointer.x >= ROOM_LEFT && pointer.x <= ROOM_RIGHT && pointer.y >= ROOM_TOP && pointer.y <= ROOM_BOTTOM;
   }
 
   move(angle, distance) {

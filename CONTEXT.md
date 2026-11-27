@@ -15,10 +15,18 @@ npm run build
 npm run preview
 ```
 
-La fase 1 arranca en una vista de comprobación de Phaser. Los cuatro
-botones permiten ver los tintes, proyectiles y cruces de ejemplo.
-Los cuatro iconos cardinales aparecen iluminados para mostrar el estado
-inicial previsto. La vista no guarda partida.
+El juego arranca en el título. Usa WASD o flechas para moverte, espacio
+para esquivar, y mantén pulsado el ratón o J para lanzar. Sagitario carga
+su hechizo mientras mantienes pulsado el botón. Abre la pausa con Esc.
+Entra por los arcos, despeja salas, elige mejoras y vence al jefe que marca
+el minimapa. Si caes, selecciona el signo de tu descendiente para ver la
+predicción y confirma para revelar su tirada antes de entrar.
+
+El navegador guarda desbloqueos, el historial de linaje y el último
+ascendiente. El progreso dentro de una expedición pertenece a la sesión
+activa. Al volver a abrir el juego puedes iniciar otra expedición a partir
+del ascendiente guardado. Si abres el juego desde un lanzador, conserva
+la URL de publicación para mantener el mismo origen del guardado.
 
 ## Contrato del lanzador
 
@@ -52,7 +60,12 @@ magia y las señales de combate.
 - El signo elegido aporta el patrón del hechizo y su elemento principal.
   El signo del padre aporta parte de las estadísticas y su afinidad.
   Un cruce Fuego–Tierra produce Magma y uno Agua–Aire produce Tormenta.
-  Esos identificadores permitirán desbloquear pisos en su fase.
+  Dichos cruces abren pisos que se añaden al final de la ruta. Magma
+  añade daño y quemadura a los impactos. Tormenta ralentiza y encadena.
+- `spellModifiers.js` define efectos acumulables y límites por mejora.
+  `enemiesData.js` separa stats, arquetipos y secuencias de los jefes de
+  su comportamiento. Las salas de jefe eligen uno de los tres signos del
+  elemento. Los pisos híbridos tienen sus propias combinaciones.
 - Usa identificadores estables en inglés para signos, elementos y
   hechizos. Los nombres visibles pueden traducirse sin alterar los datos
   de guardado. Respeta el orden de la rueda para conservar la correspondencia
@@ -83,18 +96,24 @@ Conserva la cuadrícula de frames al editar. Si añades un recurso,
 actualiza su carga en la escena de arranque y documenta sus dimensiones
 y orden. Trabaja con píxeles enteros y sin suavizado.
 
-## Fases y responsabilidades
+## Arquitectura
 
-1. Cimientos, generador de PNG y datos astrológicos. `src/main.js` configura
-   Phaser y aloja la vista provisional de comprobación.
-2. `data/` incorporará enemigos y modificadores. `systems/` incorporará
-   persistencia y aplicación de las reglas al linaje.
-3. `MapGenerator.js` generará salas, conexiones, colisiones y tintes.
-4. `entities/` implementará movimiento, dash, proyectiles, enemigos y jefes.
-5. `scenes/` separará carga, menú, selección zodiacal, juego y HUD. Sustituye
-   entonces la vista provisional y conserva el punto de entrada público.
+- `src/main.js` configura Phaser y registra las escenas. `BootScene`
+  carga los PNG y crea la fuente de píxeles compartida.
+- `MenuScene` y `ZodiacSelectScene` gestionan título, selección y tiradas.
+  `GameScene` orquesta la expedición. `UIScene` dibuja el HUD,
+  el minimapa, las recompensas y los diálogos.
+- `SaveSystem` centraliza la lectura y escritura de `localStorage`.
+  `GeneticSystem` aplica las reglas de `astrologyTable.js` y calcula la
+  ruta de pisos según el signo y las zonas desbloqueadas.
+- `MapGenerator` conecta salas y separa los datos de colisión de los
+  sprites. Cada sala conserva una semilla de decoración durante la
+  expedición. El tinte combina afinidad, tiempo y distancia al jugador.
+- `Player`, `Projectile`, `Enemy` y `Boss` actualizan las entidades.
+  `GameScene` limita el paso temporal a 30 ms. El dash y los intervalos de
+  ataque usan ese reloj. Los avisos de ataque y las trampas dejan de avanzar
+  en pausa. Los proyectiles vigentes se limpian al cambiar de sala.
 
-Requiere revisión del desarrollador para pasar de una fase a la
-siguiente. Usa módulos ES y nombres descriptivos en inglés. Documenta
-en el código las fórmulas, unidades, convenciones de frames y puntos
-de ajuste, junto a la definición que realmente los controla.
+Usa módulos ES y nombres descriptivos en inglés. Documenta fórmulas,
+unidades, convenciones de frames y puntos de ajuste junto a la definición
+que los controla.

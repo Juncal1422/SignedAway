@@ -130,15 +130,15 @@ export function createRoomRenderer(scene, room, element) {
       const pulse = 0.88 + 0.08 * Math.sin(time / 850);
       for (const sprite of sprites) {
         const distance = Math.hypot(sprite.x - player.x, sprite.y - player.y);
-        const strength = 0.45 + pulse * 0.55 * Math.max(0, 1 - distance / 190);
-        const red = Math.round(((baseTint >> 16) & 255) * strength);
-        const green = Math.round(((baseTint >> 8) & 255) * strength);
-        const blue = Math.round((baseTint & 255) * strength);
+        const strength = 0.76 + pulse * 0.62 * Math.max(0, 1 - distance / 190);
+        const red = Math.min(255, Math.round(((baseTint >> 16) & 255) * strength));
+        const green = Math.min(255, Math.round(((baseTint >> 8) & 255) * strength));
+        const blue = Math.min(255, Math.round((baseTint & 255) * strength));
         sprite.setTint((red << 16) | (green << 8) | blue);
       }
     },
     showDoors(open) {
-      for (const sprite of doorSprites) sprite.setTint(open ? 0xc2af9c : 0x7e5359);
+      for (const sprite of doorSprites) sprite.setTint(open ? 0xffe4be : 0x7e5359);
     },
     destroy() {
       for (const sprite of [...sprites, ...doorSprites]) sprite.destroy();
