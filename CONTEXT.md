@@ -18,18 +18,18 @@ npm run preview
 El juego arranca en el título. Usa WASD o flechas para moverte, espacio
 para esquivar, y mantén pulsado el ratón o J para lanzar. Sagitario carga
 su hechizo mientras mantienes pulsado el botón. Abre la pausa con Esc.
-Entra por los arcos, despeja salas y vence al jefe que marca el minimapa.
-Los avisos tienen contorno amarillo discontinuo. Las áreas dañinas activas
-son rojas, con borde continuo y rayado interior. Los disparos enemigos llevan
-un anillo rojo. Tras vencer el último piso, cobra un bonificador en el menú.
-Las mejoras de victoria se heredan en la misma saga. Si caes, selecciona
-el signo de tu descendiente y confirma para revelar su tirada.
+Cada expedición tiene exactamente cuatro pisos. Una afinidad avanzada puede
+sustituir uno de los biomas de su familia. Cada sala de combate despejada da
+experiencia, cura una pequeña parte de la vida y acerca a romper el sello
+del jefe. Las mejoras se eligen al subir de nivel y duran esa expedición.
+Abre la ficha con Tab para consultar atributos, poderes y mejoras. Al elegir
+descendiente, la pestaña Cálculo explica la mezcla y el rango de tirada.
 
 Los catálogos del menú explican hechizos, aspectos, afinidades, bonificadores,
 enemigos y jefes. El historial incluye los signos, poderes, elementos y
 encuentros. Volver a primera generación archiva la saga y reinicia sus
-desbloqueos, afinidades y bonificadores. El guardado de la versión anterior
-conserva sus generaciones y empieza a registrar jefes en las nuevas. El progreso dentro de una expedición pertenece a la sesión
+desbloqueos y afinidades. El guardado de la versión anterior
+conserva sus generaciones, jefes y afinidades. El progreso dentro de una expedición pertenece a la sesión
 activa. Al volver a abrir el juego puedes iniciar otra expedición a partir
 del ascendiente guardado. Si abres el juego desde un lanzador, conserva
 la URL de publicación para mantener el mismo origen del guardado.
@@ -89,7 +89,8 @@ y las señales de combate.
 - `spellModifiers.js` define efectos acumulables y límites por mejora.
   `enemiesData.js` separa stats, arquetipos y secuencias de los jefes de
   su comportamiento. Las salas de jefe eligen uno de los tres signos del
-  elemento. Los pisos híbridos tienen sus propias combinaciones.
+  elemento. Cada uno tiene patrones propios y ritmos de movimiento
+  diferenciados. Los pisos híbridos pueden tener su propia selección.
 - Usa identificadores estables en inglés para signos, elementos y
   hechizos. Los nombres visibles pueden traducirse sin alterar los datos
   de guardado. Respeta el orden de la rueda para conservar la correspondencia
@@ -107,11 +108,11 @@ matrices o en la paleta del generador.
 
 | Archivo en `public/assets/` | Disposición |
 | --- | --- |
-| `sprites/player.png` | 12 poses de 32×32 por signo: pasos 0–3, ataque 4–6, dash 7–9 y daño 10–11 |
-| `sprites/enemies.png` | Frames de 32×32. Tres columnas por arquetipo y cuatro filas por elemento |
-| `sprites/bosses.png` | Doce frames de 32×32 en orden zodiacal |
-| `sprites/projectiles.png` | Frames de 32×32. Cuatro filas de disparos enemigos y doce siluetas zodiacales |
-| `tilesets/gothic_dungeon_tileset.png` | Ocho tiles de 32×32. Suelos 0–1, muro 2, grieta 3, altar 4, arco 5, escombro 6 y pavimento ritual 7 |
+| `sprites/player.png` | 32 poses de 32×32 por signo: reposo 0–5, carrera 6–15, ataque 16–22, dash 23–27 y daño 28–31 |
+| `sprites/enemies.png` | Ocho poses de 32×32 por variante. Filas en orden de bioma y arquetipo |
+| `sprites/bosses.png` | Ocho poses de 32×32 por jefe, filas en orden zodiacal |
+| `sprites/projectiles.png` | Cuatro fases de 32×32 por fila. 16 perfiles hostiles y 12 zodiacales |
+| `tilesets/gothic_dungeon_tileset.png` | Diez tiles de 32×32 por bioma. Suelos 0–1, muro 2, grieta 3, altar 4, arco 5, escombro 6, pavimento ritual 7 y terreno animado 8–9 |
 | `ui/panel_nineslice.png`, `ui/button_nineslice.png` | Marcos de 32×32 con márgenes de 6 px |
 | `ui/icons_zodiac.png` | Doce frames de 32×32 en orden zodiacal |
 
@@ -126,13 +127,13 @@ y orden. Trabaja con píxeles enteros y sin suavizado.
   carga los PNG y crea la fuente de píxeles compartida.
 - `MenuScene` y `ZodiacSelectScene` gestionan título, selección y tiradas.
   `GameScene` orquesta la expedición. `UIScene` dibuja el HUD,
-  el minimapa, las recompensas y los diálogos.
+  el minimapa, la ficha, las mejoras de nivel y los diálogos.
 - `SaveSystem` centraliza la lectura y escritura de `localStorage`.
   `GeneticSystem` aplica las reglas de `astrologyTable.js` y calcula la
   ruta de pisos según el signo y las zonas desbloqueadas.
 - `MapGenerator` conecta salas y separa los datos de colisión de los
   sprites. Cada sala conserva una semilla de decoración durante la
-  expedición. El tinte combina afinidad, tiempo y distancia al jugador.
+  expedición. Cada bioma tiene suelo, obstáculos y terreno propios. El tinte combina afinidad, tiempo y distancia al jugador.
 - `Player`, `Projectile`, `Enemy` y `Boss` actualizan las entidades.
   `GameScene` limita el paso temporal a 30 ms. El dash y los intervalos de
   ataque usan ese reloj. Los avisos de ataque y las trampas dejan de avanzar

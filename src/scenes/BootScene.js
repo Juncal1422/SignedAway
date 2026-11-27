@@ -95,13 +95,14 @@ export class BootScene extends Phaser.Scene {
       return;
     }
     const animations = {
-      walk: [0, 3, 9, -1], attack: [4, 6, 21, 0], dash: [7, 9, 25, 0], hurt: [10, 11, 15, 0],
+      idle: [0, 5, 7, -1], walk: [6, 15, 19, -1], attack: [16, 22, 40, 0],
+      dash: [23, 27, 36, 0], hurt: [28, 31, 18, 0],
     };
     ZODIAC_SIGNS.forEach((sign, index) => {
       for (const [pose, [start, end, frameRate, repeat]] of Object.entries(animations)) {
         this.anims.create({
           key: `${sign.id}-${pose}`,
-          frames: this.anims.generateFrameNumbers('player', { start: index * 12 + start, end: index * 12 + end }),
+          frames: this.anims.generateFrameNumbers('player', { start: index * 32 + start, end: index * 32 + end }),
           frameRate, repeat,
         });
       }

@@ -1,5 +1,4 @@
-import { POWER_BY_ID } from '../data/elementalPowers.js';
-import { ELEMENTS } from '../data/zodiacData.js';
+import { POWER_BY_ID, primaryElement } from '../data/elementalPowers.js';
 
 export const TILE_SIZE = 16;
 export const ROOM_COLUMNS = 24;
@@ -23,11 +22,20 @@ export const ROOM_DOORS = {
   west: { x: ROOM_LEFT + 8, y: ROOM_CENTER.y, entryX: ROOM_LEFT + 34, entryY: ROOM_CENTER.y },
 };
 
+export const BIOME_ART = ['fire', 'earth', 'air', 'water'];
+const terrainLayouts = {
+  fire: { blocks: [[6, 3], [17, 8], [6, 8]], terrain: [[7, 4], [8, 4], [9, 4], [15, 7], [16, 7], [17, 7], [18, 7]] },
+  earth: { blocks: [[5, 3], [6, 3], [17, 3], [18, 3], [5, 8], [6, 8], [17, 8], [18, 8]], terrain: [] },
+  air: { blocks: [[6, 8], [17, 3]], terrain: [[8, 3], [8, 4], [8, 7], [8, 8], [15, 3], [15, 4], [15, 7], [15, 8]] },
+  water: { blocks: [[6, 3], [17, 8], [17, 3]], terrain: [[5, 6], [6, 6], [7, 6], [8, 6], [7, 7], [8, 7], [15, 5], [16, 5], [17, 5], [18, 5], [15, 4], [16, 4]] },
+};
+
 const pick = (values, random) => values[Math.floor(random() * values.length)];
 
 // Cuadrícula pequeña de habitaciones conectadas. La primera expansión escoge
 // una arista de la frontera, lo que garantiza una ruta a cada sala.
 export function generateFloor(element, floorIndex, random = Math.random) {
+  const biome = primaryElement(element);
   const rooms = new Map();
   const attach = (x, y, distance) => {
     const room = {
@@ -40,7 +48,7 @@ export function generateFloor(element, floorIndex, random = Math.random) {
   const start = attach(0, 0, 0);
   start.kind = 'entry';
   start.cleared = true;
-  const roomCount = Math.min(8, 5 + floorIndex);
+  const roomCount = Math.min(9, 6 + floorIndex);
   while (rooms.size < roomCount) {
     const frontier = [];
     for (const room of rooms.values()) {
@@ -58,8 +66,8 @@ export function generateFloor(element, floorIndex, random = Math.random) {
   const leaves = [...rooms.values()].filter((room) => room !== start && Object.keys(room.doors).length === 1);
   const maxDistance = Math.max(...leaves.map((room) => room.distance));
   pick(leaves.filter((room) => room.distance === maxDistance), random).kind = 'boss';
-  for (const room of rooms.values()) room.tiles = createRoomTiles(room, floorIndex);
-  return { element, rooms, startId: start.id };
+  for (const room of rooms.values()) room.tiles = createRoomTiles(room, biome, floorIndex);
+  return { element, biome, rooms, startId: start.id, requiredClears: floorIndex < 2 ? 2 : 3 };
 }
 
 export function oppositeDoor(direction) {
@@ -86,7 +94,7 @@ function isDoorTile(room, column, row) {
   return false;
 }
 
-function createRoomTiles(room, floorIndex) {
+function createRoomTiles(room, biome, floorIndex) {
   const random = roomRandom(room.decorationSeed);
   const tiles = Array.from({ length: ROOM_ROWS }, (_, row) => Array.from({ length: ROOM_COLUMNS }, (_, column) => {
     const border = column === 0 || row === 0 || column === ROOM_COLUMNS - 1 || row === ROOM_ROWS - 1;
@@ -98,15 +106,26 @@ function createRoomTiles(room, floorIndex) {
   } else if (room.kind === 'entry') {
     tiles[ROOM_ROWS / 2][ROOM_COLUMNS / 2] = 4;
   } else {
-    // Bloques dispersos en los cuadrantes. La cruz central, el perímetro
-    // transitable y los puntos de aparición dejan paso entre todas las puertas.
-    const blocks = [[6, 3], [17, 3], [7, 8], [16, 8], [5, 7], [18, 7]];
-    for (let index = 0; index < 2 + Math.min(2, floorIndex); index++) {
-      const [column, row] = blocks.splice(Math.floor(random() * blocks.length), 1)[0];
-      tiles[row][column] = 2;
-    }
+    const layout = terrainLayouts[biome];
+    const mirror = random() < 0.5;
+    const place = (positions, frame) => {
+      for (const [column, row] of positions) tiles[row][mirror ? ROOM_COLUMNS - 1 - column : column] = frame;
+    };
+    const count = biome === 'earth' ? 6 + Math.min(2, floorIndex) : layout.blocks.length;
+    place(layout.blocks.slice(0, count), 2);
+    place(layout.terrain, 8);
   }
   return tiles;
+}
+
+export function terrainAt(room, x, y) {
+  const column = Math.floor((x - ROOM_LEFT) / TILE_SIZE);
+  const row = Math.floor((y - ROOM_TOP) / TILE_SIZE);
+  return room.tiles[row]?.[column] === 8;
+}
+
+export function lavaPhase(time) {
+  return Math.floor(time % 2200 / 440);
 }
 
 function softenTint(color) {
@@ -116,15 +135,18 @@ function softenTint(color) {
 
 export function createRoomRenderer(scene, room, element) {
   const sprites = [];
-  const baseTint = ELEMENTS[element]?.roomTint ?? softenTint(POWER_BY_ID[element].color);
+  const biome = primaryElement(element);
+  const atlasOffset = BIOME_ART.indexOf(biome) * 10;
+  const baseTint = POWER_BY_ID[element] ? softenTint(POWER_BY_ID[element].color) : 0xffffff;
   room.tiles.forEach((row, y) => row.forEach((frame, x) => {
-    const sprite = scene.add.image(ROOM_LEFT + TILE_SIZE * (x + 0.5), ROOM_TOP + TILE_SIZE * (y + 0.5), 'tiles', frame).setDisplaySize(TILE_SIZE, TILE_SIZE);
-    sprites.push(sprite);
+    const sprite = scene.add.image(ROOM_LEFT + TILE_SIZE * (x + 0.5), ROOM_TOP + TILE_SIZE * (y + 0.5), 'tiles', atlasOffset + frame)
+      .setDisplaySize(TILE_SIZE, TILE_SIZE);
+    sprites.push({ sprite, frame });
   }));
   const doorSprites = Object.keys(room.doors).map((direction) => {
     const door = ROOM_DOORS[direction];
     const rotation = { north: 0, east: Math.PI / 2, south: Math.PI, west: -Math.PI / 2 }[direction];
-    return scene.add.image(door.x, door.y, 'tiles', 5).setDisplaySize(TILE_SIZE, TILE_SIZE).setRotation(rotation).setDepth(1);
+    return [direction, scene.add.image(door.x, door.y, 'tiles', atlasOffset + 5).setDisplaySize(TILE_SIZE, TILE_SIZE).setRotation(rotation).setDepth(1)];
   });
   const wallTint = 0xe4d4d6;
   return {
@@ -135,24 +157,32 @@ export function createRoomRenderer(scene, room, element) {
       // Los tiles cercanos recuperan luminosidad. Las variaciones de base
       // y distancia cambian como máximo diez veces por segundo desde GameScene.
       const pulse = 0.88 + 0.08 * Math.sin(time / 850);
-      for (const sprite of sprites) {
-        if (Number(sprite.frame.name) === 2) {
+      for (const { sprite, frame } of sprites) {
+        if (frame === 8) {
+          const active = biome === 'fire' ? lavaPhase(time) >= 3 : Math.floor(time / 330) % 2;
+          sprite.setFrame(atlasOffset + (active ? 9 : 8));
+          continue;
+        }
+        if (frame === 2) {
           sprite.setTint(wallTint);
           continue;
         }
         const distance = Math.hypot(sprite.x - player.x, sprite.y - player.y);
-        const strength = 0.76 + pulse * 0.62 * Math.max(0, 1 - distance / 190);
+        const strength = 0.87 + pulse * 0.27 * Math.max(0, 1 - distance / 190);
         const red = Math.min(255, Math.round(((baseTint >> 16) & 255) * strength));
         const green = Math.min(255, Math.round(((baseTint >> 8) & 255) * strength));
         const blue = Math.min(255, Math.round((baseTint & 255) * strength));
         sprite.setTint((red << 16) | (green << 8) | blue);
       }
     },
-    showDoors(open) {
-      for (const sprite of doorSprites) sprite.setTint(open ? 0xffe4be : 0x7e5359);
+    showDoors(open, locked) {
+      for (const [direction, sprite] of doorSprites) {
+        sprite.setTint(locked(direction) ? 0xd36054 : open ? 0xffe4be : 0x7e5359);
+      }
     },
     destroy() {
-      for (const sprite of [...sprites, ...doorSprites]) sprite.destroy();
+      for (const { sprite } of sprites) sprite.destroy();
+      for (const [, sprite] of doorSprites) sprite.destroy();
     },
   };
 }

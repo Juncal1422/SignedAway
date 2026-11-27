@@ -3,7 +3,7 @@
 // hooks mediante Projectile, incluidas las invocaciones, trampas y escudos.
 export const SPELL_MODIFIERS = [
   {
-    id: 'fork', name: 'Bifurcación', shortName: 'Bif', description: 'Dos proyectiles secundarios al lanzar.',
+    id: 'fork', name: 'Bifurcación', shortName: 'Bif', description: 'Dos disparos secundarios. Cada uno inflige un 55% del daño.',
     onSpawn(projectile) {
       if (projectile.secondary || !projectile.isMobile) return;
       for (const offset of [-0.28, 0.28]) {
@@ -33,19 +33,19 @@ export const SPELL_MODIFIERS = [
     },
   },
   {
-    id: 'embers', name: 'Ascuas', shortName: 'Ascuas', description: 'Quema al enemigo durante 2 segundos.',
+    id: 'embers', name: 'Ascuas', shortName: 'Ascuas', description: 'Cuatro pulsos de quemadura. Cada pulso inflige un 20% por nivel.',
     onHit(projectile, enemy, stacks) {
       enemy.applyBurn(projectile.damage * 0.20 * stacks);
     },
   },
   {
-    id: 'frost', name: 'Escarcha', shortName: 'Hielo', description: 'Ralentiza al enemigo durante 1,2 segundos.',
+    id: 'frost', name: 'Escarcha', shortName: 'Hielo', description: 'Reduce la velocidad un 17% por nivel durante 1,2 s. Mínimo 35%.',
     onHit(projectile, enemy, stacks) {
       enemy.applySlow(Math.max(0.35, 1 - 0.17 * stacks));
     },
   },
   {
-    id: 'chain', name: 'Descarga', shortName: 'Rayo', description: 'Salta a un enemigo cercano por carga.',
+    id: 'chain', name: 'Descarga', shortName: 'Rayo', description: 'Salta a un enemigo cercano por nivel e inflige un 45% del daño.',
     onHit(projectile, enemy, stacks) {
       projectile.scene.chainDamage(enemy, projectile.damage * 0.45, stacks, projectile.color);
     },

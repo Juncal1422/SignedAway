@@ -1,4 +1,4 @@
-import { configureCamera } from './UIScene.js';
+import { configureCamera, label } from './UIScene.js';
 import Phaser from 'phaser';
 import { primaryElement, POWER_BY_ID } from '../data/elementalPowers.js';
 import { ZODIAC_SIGNS } from '../data/zodiacData.js';
@@ -7,7 +7,7 @@ import { MAX_MODIFIER_STACKS, SPELL_MODIFIERS } from '../data/spellModifiers.js'
 import { unlockFloorReward } from '../systems/GeneticSystem.js';
 import { saveSystem } from '../systems/SaveSystem.js';
 import {
-  createRoomRenderer, generateFloor, isBlocked, oppositeDoor, ROOM_CENTER, ROOM_DOORS,
+  createRoomRenderer, generateFloor, isBlocked, oppositeDoor, ROOM_CENTER, ROOM_DOORS, ROOM_LEFT, ROOM_RIGHT, ROOM_TOP, ROOM_BOTTOM, terrainAt, lavaPhase,
 } from '../systems/MapGenerator.js';
 import { Player } from '../entities/Player.js';
 import { Projectile } from '../entities/Projectile.js';
@@ -19,7 +19,6 @@ import { Boss } from '../entities/Boss.js';
 const spawnOffsets = [
   [-119, -45], [119, -45], [-119, 45], [119, 45], [-72, 0], [72, 0], [0, -48], [0, 48],
 ];
-const archetypes = ['melee', 'ranged', 'elemental'];
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -46,7 +45,9 @@ export class GameScene extends Phaser.Scene {
     this.random = Math.random;
     this.encounteredBosses = [];
     this.player = new Player(this, build, ROOM_CENTER.x, ROOM_CENTER.y);
-    this.player.modifiers = { ...saveSystem.progress.bonuses };
+    this.level = 1;
+    this.experience = 0;
+    this.input.keyboard.addKey('TAB', true).on('down', () => this.toggleCharacter());
     this.input.keyboard.addKey('ESC', true).on('down', () => this.togglePause());
     this.beginFloor();
     this.scene.launch('hud', { world: this });
@@ -58,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   get hud() { return this.scene.get('hud'); }
 
   beginFloor() {
+    this.roomsCleared = 0;
     this.floor = generateFloor(this.route[this.floorIndex], this.floorIndex, this.random);
     this.enterRoom(this.floor.startId);
     if (this.scene.isActive('hud')) this.hud.renderFloor();
@@ -65,10 +67,11 @@ export class GameScene extends Phaser.Scene {
 
   enterRoom(id, entryDoor) {
     this.clearRoomObjects();
+    if (this.scene.isActive('hud')) this.hud.clearNotice();
     this.room = this.floor.rooms.get(id);
     this.room.visited = true;
     this.roomView = createRoomRenderer(this, this.room, this.floor.element);
-    this.roomView.showDoors(this.room.cleared);
+    this.syncDoors();
     const door = ROOM_DOORS[entryDoor];
     this.player.setPosition(door?.entryX ?? ROOM_CENTER.x, door?.entryY ?? ROOM_CENTER.y);
     this.player.dashRemaining = 0;
@@ -80,6 +83,14 @@ export class GameScene extends Phaser.Scene {
       this.spawnRoom();
       this.applyRoomPowers();
     }
+  }
+
+  get bossUnlocked() { return this.roomsCleared >= this.floor.requiredClears; }
+  get levelCost() { return 2 + Math.floor((this.level - 1) / 5); }
+
+  syncDoors() {
+    this.roomView.showDoors(this.room.cleared, (direction) =>
+      !this.bossUnlocked && this.floor.rooms.get(this.room.doors[direction]).kind === 'boss');
   }
 
   clearRoomObjects() {
@@ -99,7 +110,7 @@ export class GameScene extends Phaser.Scene {
 
   spawnRoom() {
     const element = this.floor.element;
-    const difficulty = 1 + 0.15 * this.floorIndex;
+    const difficulty = 1.22 + 0.26 * this.floorIndex;
     if (this.room.kind === 'boss') {
       const signs = HYBRID_BOSS_SIGNS[element] ?? ZODIAC_SIGNS.filter((sign) => sign.element === primaryElement(element)).map((sign) => sign.id);
       const signId = signs[Math.floor(this.random() * signs.length)];
@@ -115,11 +126,18 @@ export class GameScene extends Phaser.Scene {
     // ninguna aparición coincida con un bloque de piedra.
     const positions = spawnOffsets.map(([x, y]) => ({ x: ROOM_CENTER.x + x, y: ROOM_CENTER.y + y }))
       .filter(({ x, y }) => !this.blocked(x, y, 9) && Math.hypot(x - this.player.x, y - this.player.y) >= 43);
-    const count = Math.min(5, 2 + this.floorIndex + Number(this.random() < 0.38));
-    const firstArchetype = Math.floor(this.random() * archetypes.length);
+    const packs = {
+      fire: ['melee', 'melee', 'elemental', 'ranged'],
+      earth: ['elemental', 'melee', 'elemental', 'ranged'],
+      air: ['ranged', 'melee', 'ranged', 'elemental'],
+      water: ['elemental', 'ranged', 'melee', 'elemental'],
+    };
+    const pack = packs[this.floor.biome];
+    const count = Math.min(6, 3 + this.floorIndex + Number(this.random() < 0.38));
+    const firstArchetype = Math.floor(this.random() * pack.length);
     for (let index = 0; index < Math.min(count, positions.length); index++) {
       const position = positions.splice(Math.floor(this.random() * positions.length), 1)[0];
-      const archetype = archetypes[(firstArchetype + index) % archetypes.length];
+      const archetype = pack[(firstArchetype + index) % pack.length];
       this.enemies.push(new Enemy(this, { ...position, element, archetype, difficulty }));
     }
   }
@@ -165,6 +183,10 @@ export class GameScene extends Phaser.Scene {
     const enemyDelta = delta * (this.build.affinity.roomSpeed ?? 1);
     this.hostileElapsed = (this.hostileElapsed ?? 0) + enemyDelta;
     this.player.update(delta);
+    if (!this.room.cleared && terrainAt(this.room, this.player.x, this.player.y)) {
+      if (this.floor.biome === 'fire' && lavaPhase(this.elapsed) >= 3) this.player.takeDamage(11);
+      if (this.floor.biome === 'air' && !this.player.dashRemaining) this.player.move(0, 22 * delta / 1000);
+    }
     this.runActions();
     const enemyCount = this.enemies.length;
     for (let index = 0; index < enemyCount; index++) this.enemies[index].update(enemyDelta);
@@ -191,6 +213,11 @@ export class GameScene extends Phaser.Scene {
       for (const [direction, id] of Object.entries(this.room.doors)) {
         const door = ROOM_DOORS[direction];
         if (Math.hypot(door.x - this.player.x, door.y - this.player.y) < 10) {
+          if (this.floor.rooms.get(id).kind === 'boss' && !this.bossUnlocked) {
+            this.doorCooldown = this.elapsed + 650;
+            this.showNotice(`SELLO: ${this.roomsCleared}/${this.floor.requiredClears} SALAS`, 0xffad79);
+            return;
+          }
           this.enterRoom(id, oppositeDoor(direction));
           return;
         }
@@ -210,7 +237,8 @@ export class GameScene extends Phaser.Scene {
 
   clearEncounter() {
     this.room.cleared = true;
-    this.roomView.showDoors(true);
+    if (!this.boss) this.roomsCleared++;
+    this.syncDoors();
     this.actions.length = 0;
     for (const projectile of this.projectiles) projectile.destroy();
     this.projectiles.length = 0;
@@ -226,7 +254,7 @@ export class GameScene extends Phaser.Scene {
       const unlocked = unlockFloorReward(saveSystem, this.floor.element, this.boss.signId);
       this.floorsCleared++;
       const final = this.floorsCleared === this.route.length;
-      this.player.heal(Math.ceil(this.player.stats.maxHealth * 0.32));
+      this.player.heal(Math.ceil(this.player.stats.maxHealth * 0.23));
       this.modal = 'floor';
       if (final) this.record('victory');
       this.hud.floorCleared(unlocked, final, () => {
@@ -242,13 +270,29 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.player.heal(Math.ceil(this.player.stats.maxHealth * 0.07));
-    this.showNotice('SALA DESPEJADA', 0xcfbea7);
+    this.player.heal(Math.ceil(this.player.stats.maxHealth * 0.065));
+    this.experience++;
+    if (this.experience >= this.levelCost) {
+      this.experience -= this.levelCost;
+      this.level++;
+      const choices = this.levelChoices();
+      if (!choices.length) return;
+      this.modal = 'level';
+      this.hud.levelUp(this.level, choices, (id) => {
+        this.player.modifiers[id] = (this.player.modifiers[id] ?? 0) + 1;
+        this.hud.closeModal();
+        this.modal = null;
+      });
+      return;
+    }
+    this.showNotice(this.roomsCleared === this.floor.requiredClears ? 'SELLO DEL JEFE ROTO' : 'SALA DESPEJADA / +1 XP', 0xcfbea7);
   }
 
-  victoryChoices() {
+  levelChoices() {
     const candidates = SPELL_MODIFIERS.filter(({ id }) =>
-      (this.player.modifiers[id] ?? 0) < MAX_MODIFIER_STACKS[id]);
+      (this.player.modifiers[id] ?? 0) < MAX_MODIFIER_STACKS[id]
+      && (!['fork', 'needle'].includes(id) || this.player.spell.speed || this.player.spell.kind === 'summon')
+      && (id !== 'growth' || this.player.spell.radius || this.player.spell.kind === 'cone'));
     const choices = [];
     while (choices.length < 3 && candidates.length) {
       choices.push(candidates.splice(Math.floor(this.random() * candidates.length), 1)[0].id);
@@ -256,7 +300,18 @@ export class GameScene extends Phaser.Scene {
     return choices;
   }
 
+  toggleCharacter() {
+    if (this.modal === 'character') {
+      this.hud.closeModal();
+      this.modal = null;
+    } else if (!this.modal && this.scene.isActive('hud')) {
+      this.modal = 'character';
+      this.hud.characterSheet(() => this.toggleCharacter());
+    }
+  }
+
   togglePause() {
+    if (this.modal === 'character') return this.toggleCharacter();
     if (this.modal === 'pause') {
       this.hud.closeModal();
       this.modal = null;
@@ -278,7 +333,6 @@ export class GameScene extends Phaser.Scene {
   record(outcome) {
     saveSystem.completeRun({
       build: this.build, outcome, floors: this.floorsCleared, bosses: this.encounteredBosses,
-      reward: outcome === 'victory' ? this.victoryChoices() : [],
     });
   }
 
@@ -289,6 +343,19 @@ export class GameScene extends Phaser.Scene {
 
   showNotice(text, color) {
     this.hud.showNotice(text, color);
+  }
+
+  playerHit(player, amount) {
+    this.hitStop(40);
+    this.cameras.main.shake(150, 0.006);
+    this.spark(player.x, player.y, 0xff6b68);
+    const number = label(this, player.x, player.y - 13, `-${Math.ceil(amount)}`, { size: 12, color: 0xff846e }).setDepth(18);
+    this.resetEffects.add(number);
+    this.tweens.add({
+      targets: number, y: number.y - 23, alpha: 0, delay: 130, duration: 410,
+      onComplete: () => { this.resetEffects.delete(number); number.destroy(); },
+    });
+    if (this.scene.isActive('hud')) this.hud.flashDamage();
   }
 
   hitStop(duration) {
@@ -316,7 +383,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   dashTrail(player) {
-    const ghost = this.add.image(player.x, player.y, 'player', player.sprite.frame.name).setFlipX(player.sprite.flipX).setScale(0.88).setAlpha(0.43).setDepth(9);
+    const ghost = this.add.image(player.x, player.y, 'player', player.sprite.frame.name).setFlipX(player.sprite.flipX).setScale(0.74).setAlpha(0.43).setDepth(9);
     if (this.canTint) ghost.setTint(player.color);
     this.fade(ghost, 135, 0.98);
   }
@@ -345,6 +412,53 @@ export class GameScene extends Phaser.Scene {
       if (action.time <= this.hostileElapsed) action.callback();
       else this.actions.push(action);
     }
+  }
+
+  laneLength(x, y, angle, length) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const across = Math.abs(cos) < 0.0001 ? Infinity : ((cos > 0 ? ROOM_RIGHT - 14 : ROOM_LEFT + 14) - x) / cos;
+    const down = Math.abs(sin) < 0.0001 ? Infinity : ((sin > 0 ? ROOM_BOTTOM - 14 : ROOM_TOP + 14) - y) / sin;
+    return Math.max(0, Math.min(length, across, down));
+  }
+
+  laneShape(x, y, angle, length, halfWidth, mark) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const farX = x + cos * length;
+    const farY = y + sin * length;
+    const sx = -sin * halfWidth;
+    const sy = cos * halfWidth;
+    mark.beginPath().moveTo(x + sx, y + sy).lineTo(farX + sx, farY + sy)
+      .lineTo(farX - sx, farY - sy).lineTo(x - sx, y - sy).closePath();
+    return mark;
+  }
+
+  laneWarning(x, y, angle, length, halfWidth, delay, color, action) {
+    length = this.laneLength(x, y, angle, length);
+    const mark = this.add.graphics().setDepth(5);
+    mark.fillStyle(color, 0.14).lineStyle(1, 0xffdb86, 0.88);
+    this.laneShape(x, y, angle, length, halfWidth, mark).fillPath().strokePath();
+    this.resetEffects.add(mark);
+    this.after(delay, () => {
+      this.resetEffects.delete(mark);
+      mark.destroy();
+      action();
+    });
+  }
+
+  hitLane(x, y, angle, length, halfWidth, damage, color) {
+    length = this.laneLength(x, y, angle, length);
+    const mark = this.add.graphics().setDepth(7);
+    mark.fillStyle(color, 0.61).lineStyle(1.5, 0xffa486, 0.9);
+    this.laneShape(x, y, angle, length, halfWidth, mark).fillPath().strokePath();
+    this.fade(mark, 210, 1);
+    const dx = this.player.x - x;
+    const dy = this.player.y - y;
+    const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+    const across = Math.abs(-dx * Math.sin(angle) + dy * Math.cos(angle));
+    if (along >= -this.player.radius && along <= length + this.player.radius
+      && across <= halfWidth + this.player.radius) this.player.takeDamage(damage);
   }
 
   aimWarning(x, y, angle, delay, action) {
@@ -391,12 +505,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  summon(boss) {
+  summon(boss, archetype = 'melee') {
+    if (this.enemies.filter((enemy) => enemy.alive && enemy.summoned).length >= 3) return;
     const positions = spawnOffsets.map(([x, y]) => ({ x: ROOM_CENTER.x + x, y: ROOM_CENTER.y + y }));
     const position = positions.find(({ x, y }) => !this.blocked(x, y, 8)
       && this.enemies.every((enemy) => !enemy.alive || Math.hypot(enemy.x - x, enemy.y - y) > 28)
       && Math.hypot(this.player.x - x, this.player.y - y) > 36);
-    if (position) this.enemies.push(new Enemy(this, { ...position, element: boss.element, archetype: 'melee', summoned: true }));
+    if (position) this.enemies.push(new Enemy(this, { ...position, element: boss.element, archetype, summoned: true }));
   }
 
   chainDamage(source, damage, count, color) {

@@ -2,16 +2,16 @@ import Phaser from 'phaser';
 import { ALL_ELEMENTS, POWER_BY_ID, primaryElement } from '../data/elementalPowers.js';
 import { ASTROLOGICAL_ASPECTS } from '../data/astrologyTable.js';
 import { ARCHETYPE_DESCRIPTIONS, ATTACK_DESCRIPTIONS, BOSSES, ENEMY_ARCHETYPES, ENEMY_ELEMENTS, HYBRID_BOSS_SIGNS } from '../data/enemiesData.js';
-import { MODIFIER_BY_ID, SPELL_MODIFIERS } from '../data/spellModifiers.js';
+import { SPELL_MODIFIERS } from '../data/spellModifiers.js';
 import { SPELL_DESCRIPTIONS, ZODIAC_SIGNS, ZODIAC_BY_ID } from '../data/zodiacData.js';
 import { saveSystem } from '../systems/SaveSystem.js';
 import { button, configureCamera, frame, ink, label, wrappedLabel } from './UIScene.js';
 
 const baseEffects = {
-  fire: 'Ataques ígneos rápidos, en abanico o de carga.',
-  earth: 'Baluartes, guardianes y trampas de piedra.',
-  air: 'Filos divididos, de retorno o en órbita.',
-  water: 'Mareas, proyectiles perforantes y orbes que rebotan.',
+  fire: 'El magma del suelo se activa por pulsos. Los acechadores de este bioma embisten.',
+  earth: 'Pilares estrechan los pasillos. Los acechadores y custodios se protegen al atacar.',
+  air: 'Las corrientes del suelo empujan. Los tiradores se desplazan en arco y disparan en pareja.',
+  water: 'El agua poco profunda reduce tu velocidad al 65%. Los orbes enemigos rebotan.',
 };
 const effectEntries = [
   ...Object.entries(baseEffects).map(([id, description]) => ({
@@ -26,7 +26,7 @@ const effectEntries = [
     detail: `${sign.name} / DAÑO BASE ${sign.spell.damage} / ${sign.spell.cooldown} MS ENTRE ATAQUES`,
   })),
   ...SPELL_MODIFIERS.map((modifier) => ({
-    category: 'BONOS', title: modifier.name, description: modifier.description, detail: 'BONIFICADOR DE VICTORIA',
+    category: 'BONOS', title: modifier.name, description: modifier.description, detail: 'MEJORA DE NIVEL DE LA EXPEDICIÓN',
   })),
   ...ASTROLOGICAL_ASPECTS.map((aspect) => ({
     category: 'ASPECTOS', title: aspect.name, detail: 'ASPECTO ZODIACAL',
@@ -36,7 +36,7 @@ const effectEntries = [
   })),
 ];
 const bossEntries = ZODIAC_SIGNS.map((sign, index) => ({
-  title: BOSSES[sign.id].title, color: ALL_ELEMENTS[sign.element].color, sprite: ['bosses', index],
+  title: BOSSES[sign.id].title, color: ALL_ELEMENTS[sign.element].color, sprite: ['bosses', index * 8],
   detail: `VIDA BASE ${BOSSES[sign.id].health} / DAÑO BASE ${BOSSES[sign.id].damage}`,
   description: BOSSES[sign.id].pattern.map((id) => ATTACK_DESCRIPTIONS[id].join('. ')).join(' '),
 }));
@@ -45,7 +45,7 @@ const enemyEntries = Object.entries(ALL_ELEMENTS).flatMap(([id, element]) => {
   const signs = HYBRID_BOSS_SIGNS[id] ?? ZODIAC_SIGNS.filter((sign) => sign.element === primaryElement(id)).map((sign) => sign.id);
   return Object.entries(ARCHETYPE_DESCRIPTIONS).map(([kind, [name, description]]) => ({
     title: `${name} / ${element.name}`, color: element.color,
-    sprite: ['enemies', variant.frameRow * 3 + ENEMY_ARCHETYPES[kind].frame],
+    sprite: ['enemies', (variant.frameRow * 3 + ENEMY_ARCHETYPES[kind].frame) * 8],
     description: kind === 'elemental' ? ATTACK_DESCRIPTIONS[variant.pattern].join('. ') : description,
     detail: kind === 'elemental' ? `JEFES: ${signs.map((sign) => ZODIAC_BY_ID[sign].name).join(' / ')}` : '',
   }));
@@ -78,17 +78,17 @@ export class MenuScene extends Phaser.Scene {
       this.items(this.add.image(174 + 44 * index, 42, 'zodiac', frameIndex).setScale(0.85));
     }
     this.items(label(this, 240, 74, 'SIGNED AWAY', { size: 30 }));
-    const { pendingAncestor, unlockedSigns, lineage, pendingReward } = saveSystem.progress;
+    const { pendingAncestor, unlockedSigns, lineage } = saveSystem.progress;
     this.items(
-      button(this, 240, 112, 219, pendingReward.length ? 'COBRAR BONIFICADOR' : pendingAncestor ? 'CONTINUAR LINAJE' : 'INICIAR PARTIDA',
-        () => pendingReward.length ? this.showReward() : this.scene.start('zodiac'), { color: ink.gold, height: 29 }),
+      button(this, 240, 112, 219, pendingAncestor ? 'CONTINUAR LINAJE' : 'INICIAR PARTIDA',
+        () => this.scene.start('zodiac'), { color: ink.gold, height: 29 }),
       label(this, 240, 137, `SIGNOS ${unlockedSigns.length}/12   GENERACIÓN ${lineage.length + 1}`, { color: ink.muted }),
       button(this, 145, 167, 166, 'CATÁLOGO DE EFECTOS', () => this.showEffects()),
       button(this, 335, 167, 166, 'CATÁLOGO DE ENEMIGOS', () => this.showEnemies()),
       button(this, 145, 202, 166, 'HISTORIAL', () => this.showHistory()),
       button(this, 335, 202, 166, 'VOLVER A 1.ª GENERACIÓN', () => this.confirmReset(), { size: 7 }),
       label(this, 240, 233, 'WASD / FLECHAS  MOVER    ESPACIO  DASH', { color: ink.muted }),
-      label(this, 240, 250, 'RATÓN / J  LANZAR    ESC  PAUSA', { color: ink.muted }),
+      label(this, 240, 250, 'RATÓN / J  LANZAR    TAB  FICHA    ESC  PAUSA', { color: ink.muted }),
     );
     if (!saveSystem.canPersist) this.items(label(this, 240, 268, 'GUARDADO LOCAL NO DISPONIBLE', { color: ink.gold }));
   }
@@ -129,26 +129,12 @@ export class MenuScene extends Phaser.Scene {
       () => this.showCatalog(alternate.title, alternate.entries, 0, { title, entries }), { height: 19 }));
   }
 
-  showReward() {
-    this.clear();
-    this.items(label(this, 240, 40, 'BONIFICADOR DE VICTORIA', { size: 16 }));
-    this.items(label(this, 240, 65, 'LA MEJORA PASA A TUS DESCENDIENTES', { color: ink.muted }));
-    saveSystem.progress.pendingReward.forEach((id, index) => {
-      const modifier = MODIFIER_BY_ID[id];
-      const y = 105 + index * 49;
-      this.items(button(this, 240, y, 260, modifier.name, () => {
-        if (saveSystem.claimReward(id)) this.showTitle();
-      }, { color: ink.gold }), label(this, 240, y + 19, modifier.description, { color: ink.muted }));
-    });
-    this.items(button(this, 87, 263, 101, 'VOLVER', () => this.showTitle(), { height: 19 }));
-  }
-
   confirmReset() {
     this.clear();
     this.items(label(this, 240, 68, 'VOLVER A LA 1.ª GENERACIÓN', { size: 16 }));
     const hasRuns = saveSystem.progress.lineage.length > 0;
     this.items(wrappedLabel(this, 240, 111, hasRuns
-      ? 'La saga actual pasará al historial. La nueva saga empezará con sus cuatro signos iniciales y sin poderes ni bonificadores.'
+      ? 'La saga actual pasará al historial. La nueva saga empezará con sus cuatro signos iniciales y sin poderes heredados.'
       : 'Ya estás en la primera generación de esta saga.', 354));
     this.items(button(this, 240, 214, 170, 'VOLVER', () => this.showTitle()));
     if (hasRuns) this.items(button(this, 240, 176, 170, 'ARCHIVAR Y REINICIAR', () => {
@@ -177,7 +163,7 @@ export class MenuScene extends Phaser.Scene {
         }, ...run.bosses.map((boss) => ({
           title: boss.title ?? BOSSES[boss.signId].title,
           color: ALL_ELEMENTS[boss.element].color,
-          sprite: ['bosses', ZODIAC_SIGNS.findIndex((candidate) => candidate.id === boss.signId)],
+          sprite: ['bosses', ZODIAC_SIGNS.findIndex((candidate) => candidate.id === boss.signId) * 8],
           description: `${suffix} / ${ALL_ELEMENTS[boss.element].name} / ${boss.defeated ? 'VENCIDO' : 'ENFRENTADO'}`,
           detail: `PODERES: ${(boss.powers ?? []).map((power) => ATTACK_DESCRIPTIONS[power]?.[0] ?? power).join(' / ')}`,
         }))];

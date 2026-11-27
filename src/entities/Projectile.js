@@ -33,12 +33,12 @@ export class Projectile {
     this.returning = false;
     this.isMobile = this.speed > 0;
     this.modifiers = Object.entries(options.modifiers ?? {}).map(([id, stacks]) => [MODIFIER_BY_ID[id], stacks]);
-    this.sprite = scene.add.image(options.x, options.y, 'projectiles', this.frame)
+    this.sprite = scene.add.image(options.x, options.y, 'projectiles', this.frame * 4)
       .setDepth(this.hostile ? 8 : 10)
-      .setScale(this.hostile ? 0.66 : 0.84);
+      .setScale(this.hostile ? 0.57 : 0.70);
     this.sprite.setRotation(this.angleRadians);
     if (scene.canTint && this.hostile) this.sprite.setTint(0xffb0ac);
-    this.hostileMarker = this.hostile && this.isMobile ? scene.add.graphics().setDepth(7) : null;
+    this.wake = this.isMobile ? scene.add.graphics().setDepth(7) : null;
     this.glow = scene.add.image(options.x, options.y, 'element-glow')
       .setDepth(3).setBlendMode(1).setAlpha(this.hostile ? 0.28 : 0.58);
     if (scene.canTint) this.glow.setTint(this.color);
@@ -51,6 +51,23 @@ export class Projectile {
 
   get x() { return this.sprite.x; }
   get y() { return this.sprite.y; }
+
+  drawWake(pose) {
+    this.wake.clear();
+    const x = this.x;
+    const y = this.y;
+    const vx = Math.cos(this.angleRadians);
+    const vy = Math.sin(this.angleRadians);
+    const length = Math.min(this.age * this.speed / 1000, this.hostile ? 9 : 17);
+    const color = this.hostile ? 0xff6576 : this.color;
+    this.wake.lineStyle(1, color, 0.58).lineBetween(x - vx * 4, y - vy * 4, x - vx * length, y - vy * length);
+    if (this.hostile) {
+      this.wake.lineStyle(0.8, color, 0.95).strokeCircle(x, y, 5);
+    } else if (length > 11) {
+      const offset = pose % 2 ? 2 : -2;
+      this.wake.fillStyle(color, 0.6).fillRect(x - vx * length - vy * offset, y - vy * length + vx * offset, 1.5, 1.5);
+    }
+  }
 
   spawnSecondary(angle, damageScale) {
     // Los secundarios heredan efectos de impacto y actualización. El hook
@@ -81,9 +98,10 @@ export class Projectile {
     }
     this.glow.setPosition(this.x, this.y);
 
-    if (this.hostileMarker) {
-      this.hostileMarker.clear().lineStyle(1, 0xff596a, 0.85).strokeCircle(this.x, this.y, 6);
-    }
+    const pose = Math.floor(this.age / 47) % 4;
+    this.sprite.setFrame(this.frame * 4 + pose);
+    if (this.kind === 'orbit') this.sprite.setRotation(this.age * 0.009);
+    if (this.wake) this.drawWake(pose);
     if (this.zone) this.drawZone();
     if (this.kind === 'summon') {
       // Un guardián busca y dispara en intervalos independientes de su vida.
@@ -205,6 +223,6 @@ export class Projectile {
     this.sprite.destroy();
     this.glow.destroy();
     this.zone?.destroy();
-    this.hostileMarker?.destroy();
+    this.wake?.destroy();
   }
 }

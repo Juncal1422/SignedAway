@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { ZODIAC_SIGNS } from '../data/zodiacData.js';
-import { ROOM_BOTTOM, ROOM_LEFT, ROOM_RIGHT, ROOM_TOP } from '../systems/MapGenerator.js';
+import { ROOM_BOTTOM, ROOM_LEFT, ROOM_RIGHT, ROOM_TOP, terrainAt } from '../systems/MapGenerator.js';
 import { affinityColor } from '../systems/GeneticSystem.js';
 
 const dashDuration = 144;
@@ -17,7 +17,7 @@ export class Player {
     this.radius = 6;
     this.color = affinityColor(build.element);
     this.attackFrame = 16 + ZODIAC_SIGNS.findIndex((sign) => sign.id === build.basicSignId);
-    this.idleFrame = 12 * ZODIAC_SIGNS.findIndex((sign) => sign.id === build.signId);
+    this.idleFrame = 32 * ZODIAC_SIGNS.findIndex((sign) => sign.id === build.signId);
     this.modifiers = {};
     this.alive = true;
     this.dashCooldown = 0;
@@ -27,8 +27,12 @@ export class Player {
     this.charge = 0;
     this.aimAngle = 0;
     this.trailTimer = 0;
-    this.sprite = scene.add.sprite(x, y, 'player', this.idleFrame).setScale(0.88).setDepth(12);
-    this.powerSigil = scene.add.graphics().setDepth(2);
+    this.sprite = scene.add.sprite(x, y, 'player', this.idleFrame).setScale(0.74).setDepth(12);
+    this.shadow = scene.add.ellipse(x, y + 8, 15, 5, 0x090911, 0.72).setDepth(3);
+    this.playerTint = build.powers.length ? Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.IntegerToColor(0xffffff), Phaser.Display.Color.IntegerToColor(this.color), 100, 48,
+    ) : null;
+    this.velocity = new Phaser.Math.Vector2();
     this.pointerWorld = new Phaser.Math.Vector2();
     this.keys = scene.input.keyboard.addKeys(movementKeys, true);
     this.arrows = scene.input.keyboard.createCursorKeys();
@@ -46,6 +50,8 @@ export class Player {
 
   setPosition(x, y) {
     this.sprite.setPosition(x, y);
+    this.shadow.setPosition(x, y + 8);
+    this.velocity.reset();
   }
 
   update(delta) {
@@ -91,21 +97,26 @@ export class Player {
         this.scene.dashTrail(this);
         this.trailTimer = 24;
       }
-    } else if (moving) {
-      this.move(moveAngle, this.stats.moveSpeed * delta / 1000);
+    } else {
+      const shallowWater = !this.scene.room.cleared && this.scene.floor.biome === 'water'
+        && terrainAt(this.scene.room, this.x, this.y);
+      const speed = moving ? this.stats.moveSpeed * (shallowWater ? 0.65 : 1) : 0;
+      const response = 1 - Math.exp(-delta / (moving ? 43 : 35));
+      this.velocity.x += (Math.cos(moveAngle) * speed - this.velocity.x) * response;
+      this.velocity.y += (Math.sin(moveAngle) * speed - this.velocity.y) * response;
+      if (this.velocity.lengthSq() > 6) this.move(this.velocity.angle(), this.velocity.length() * delta / 1000);
     }
     this.sprite.setFlipX(Math.cos(this.dashRemaining ? this.dashAngle : this.aimAngle) < 0);
-    if (!this.actionTimer) {
-      if (moving) this.sprite.play(`${this.build.signId}-walk`, true);
-      else this.sprite.stop().setFrame(this.idleFrame);
+    if (!this.actionTimer) this.sprite.play(`${this.build.signId}-${moving ? 'walk' : 'idle'}`, true);
+    this.shadow.setPosition(this.x, this.y + 8);
+    if (this.scene.canTint) {
+      if (this.actionPose === 'hurt' && this.actionTimer > 155) this.sprite.setTintFill(0xffc3af);
+      else if (this.playerTint) this.sprite.setTint(Phaser.Display.Color.GetColor(this.playerTint.r, this.playerTint.g, this.playerTint.b));
+      else this.sprite.clearTint();
     }
-    this.powerSigil.clear();
-    if (this.build.powers.length) {
-      this.powerSigil.fillStyle(this.color, 0.7);
-      this.powerSigil.fillRect(this.x - 8, this.y + 9, 3, 1);
-      this.powerSigil.fillRect(this.x + 6, this.y + 9, 3, 1);
-      if (this.roomShield) this.powerSigil.lineStyle(1, this.color).strokeCircle(this.x, this.y, 12);
-    }
+    if (this.invulnerable && !this.dashRemaining && !this.actionTimer) {
+      this.sprite.setAlpha(Math.floor(this.invulnerable / 58) % 2 ? 0.68 : 1);
+    } else this.sprite.setAlpha(1);
     if (casting && this.castCooldown === 0) {
       if (!this.spell.chargeTime || (this.charge += delta) >= this.spell.chargeTime) {
         this.cast();
@@ -135,7 +146,7 @@ export class Player {
   }
 
   cast() {
-    if (!this.dashRemaining && !(this.actionPose === 'hurt' && this.actionTimer)) this.playAction('attack', 140);
+    if (!this.dashRemaining && !(this.actionPose === 'hurt' && this.actionTimer)) this.playAction('attack', 175);
     const spell = this.spell;
     const aim = this.aimAngle;
     this.castCooldown = spell.cooldown;
@@ -192,11 +203,12 @@ export class Player {
       this.invulnerable = 260;
       return true;
     }
-    this.health = Math.max(0, this.health - amount * (1 - (this.build.affinity.armor ?? 0)));
-    this.invulnerable = 600;
-    this.playAction('hurt', 140);
-    this.scene.hitStop(54);
-    this.scene.cameras.main.shake(105, 0.008);
+    const damage = amount * (1 - (this.build.affinity.armor ?? 0));
+    this.health = Math.max(0, this.health - damage);
+    this.invulnerable = 560;
+    this.velocity.reset();
+    this.playAction('hurt', 235);
+    this.scene.playerHit(this, damage);
     this.alive = this.health > 0;
     return true;
   }

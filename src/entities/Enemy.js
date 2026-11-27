@@ -9,6 +9,7 @@ export class Enemy {
     this.scene = scene;
     this.element = element;
     this.archetype = archetype;
+    this.biome = primaryElement(element);
     this.pattern = affinity.pattern;
     this.frameRow = affinity.frameRow;
     this.color = affinityColor(element);
@@ -22,7 +23,11 @@ export class Enemy {
     this.radius = 7;
     this.alive = true;
     this.summoned = summoned;
-    this.sprite = scene.add.image(x, y, 'enemies', this.frameRow * 3 + base.frame).setScale(0.91).setDepth(11);
+    this.artFrame = (this.frameRow * 3 + base.frame) * 8;
+    this.animationTime = scene.random() * 400;
+    this.poseRemaining = 0;
+    this.sprite = scene.add.image(x, y, 'enemies', this.artFrame).setScale(0.73).setDepth(11);
+    this.shadow = scene.add.ellipse(x, y + 8, 15, 5, 0x080911, 0.66).setDepth(3);
     this.healthBar = scene.add.graphics().setDepth(13);
     this.badge = scene.add.graphics().setDepth(12);
   }
@@ -37,18 +42,23 @@ export class Enemy {
     const dy = player.y - this.y;
     const angle = Math.atan2(dy, dx);
     const distance = Math.hypot(dx, dy);
-    if (distance > this.reach * 0.85) this.move(angle, delta);
-    if (distance < this.reach * 0.48 && this.archetype === 'ranged') this.move(angle + Math.PI, delta, 0.6);
-    if (distance < this.reach + 5 && this.attackTimer <= 0) {
-      this.attackTimer = this.interval;
+    if (!this.poseRemaining) {
+      if (distance > this.reach * 0.85) this.move(angle, delta, this.biome === 'fire' ? 1.14 : 1);
+      else if (distance < this.reach * 0.52 && this.archetype === 'ranged') this.move(angle + Math.PI, delta, 0.66);
+      else if (this.biome === 'air') this.move(angle + Math.PI * 0.48, delta, 0.72);
+    }
+    if (distance < this.reach + 7 && this.attackTimer <= 0) {
+      this.attackTimer = this.interval * (this.biome === 'fire' ? 0.8 : 0.93);
       this.attack(angle);
     }
+    this.animate(delta);
     this.drawHealth();
   }
 
   updateStatus(delta) {
     if (!this.alive) return false;
     this.attackTimer -= delta;
+    this.poseRemaining = Math.max(0, this.poseRemaining - delta);
     this.rootRemaining = Math.max(0, (this.rootRemaining ?? 0) - delta);
     if (this.poisonTicks) {
       this.poisonTimer -= delta;
@@ -62,7 +72,7 @@ export class Enemy {
     this.slowRemaining = Math.max(0, (this.slowRemaining ?? 0) - delta);
     this.wardRemaining = Math.max(0, (this.wardRemaining ?? 0) - delta);
     this.flash = Math.max(0, (this.flash ?? 0) - delta);
-    this.sprite.setAlpha(this.flash ? 0.5 : 1);
+
     if (this.burnTicks) {
       this.burnTimer -= delta;
       if (this.burnTimer <= 0) {
@@ -94,13 +104,47 @@ export class Enemy {
     }
   }
 
+  playPose(duration) {
+    this.poseRemaining = duration;
+    this.poseDuration = duration;
+  }
+
+  animate(delta) {
+    this.animationTime += delta;
+    const moving = this.lastX !== undefined && Math.hypot(this.x - this.lastX, this.y - this.lastY) > 0.05;
+    this.lastX = this.x;
+    this.lastY = this.y;
+    const phase = Math.floor(this.animationTime / (moving ? 88 : 175));
+    const pose = this.flash > 0 ? 7
+      : this.poseRemaining ? 4 + Math.min(2, Math.floor(3 * (1 - this.poseRemaining / this.poseDuration)))
+        : phase % 4;
+    this.sprite.setFrame(this.artFrame + pose);
+    if (this.scene.canTint) {
+      if (this.flash > 0) this.sprite.setTintFill(0xffe8bc);
+      else this.sprite.clearTint();
+    }
+    this.shadow.setPosition(this.x, this.y + 8);
+  }
+
   attack(angle) {
+    this.playPose(this.biome === 'earth' ? 360 : 235);
+    this.sprite.setFlipX(Math.cos(angle) < 0);
     if (this.archetype === 'melee') {
-      const x = this.x + Math.cos(angle) * 14;
-      const y = this.y + Math.sin(angle) * 14;
-      this.scene.telegraph(x, y, 16, this.color, 230, () => this.area(x, y, 16, 140));
+      const reach = this.biome === 'fire' ? 28 : 16;
+      const radius = this.biome === 'earth' ? 21 : 15;
+      const x = this.x + Math.cos(angle) * reach;
+      const y = this.y + Math.sin(angle) * reach;
+      if (this.biome === 'earth') this.wardRemaining = 360;
+      this.scene.telegraph(x, y, radius, this.color, this.biome === 'earth' ? 385 : 235, () => {
+        if (this.alive && this.biome === 'fire') this.move(angle, 85, 2.4);
+        this.area(x, y, radius, this.biome === 'water' ? 640 : 150);
+      });
     } else if (this.archetype === 'ranged') {
-      this.scene.aimWarning(this.x, this.y, angle, 105, () => this.fan(angle, 1, 0, 174));
+      this.scene.aimWarning(this.x, this.y, angle, 165, () => {
+        if (this.biome === 'water') this.shot(angle, 147, 1);
+        else if (this.biome === 'air') this.fan(angle, 2, 0.27, 192);
+        else this.shoot(angle, 182);
+      });
     } else {
       this.elementalAttack(angle);
     }
@@ -135,11 +179,13 @@ export class Enemy {
     for (let index = 0; index < count; index++) this.shoot(angle + Math.PI * 2 * index / count, speed);
   }
 
-  shoot(angle, speed) {
+  shoot(angle, speed) { this.shot(angle, speed, 0); }
+
+  shot(angle, speed, bounces) {
     if (!this.alive) return;
     this.scene.addProjectile({
       x: this.x + Math.cos(angle) * (this.radius + 2), y: this.y + Math.sin(angle) * (this.radius + 2),
-      owner: this, hostile: true, angle, speed, lifetime: 2800, damage: this.damage,
+      owner: this, hostile: true, angle, speed, bounces, lifetime: 2800, damage: this.damage,
       color: this.color, frame: this.frameRow * 4 + (this.archetype === 'ranged' ? 0 : 1),
     });
   }
@@ -207,5 +253,6 @@ export class Enemy {
     this.sprite.destroy();
     this.healthBar.destroy();
     this.badge.destroy();
+    this.shadow.destroy();
   }
 }

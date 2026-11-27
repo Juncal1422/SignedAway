@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ELEMENTS, ZODIAC_SIGNS, ZODIAC_BY_ID, SPELL_DESCRIPTIONS } from '../data/zodiacData.js';
+import { ZODIAC_SIGNS, ZODIAC_BY_ID, SPELL_DESCRIPTIONS } from '../data/zodiacData.js';
 import { createDescendant, previewDescendant, buildFloorRoute } from '../systems/GeneticSystem.js';
 import { saveSystem } from '../systems/SaveSystem.js';
 import { button, configureCamera, frame, ink, label, wrappedLabel, ZONES } from './UIScene.js';
@@ -15,88 +15,109 @@ export class ZodiacSelectScene extends Phaser.Scene {
     this.parentSignId = saveSystem.progress.pendingAncestor;
     this.signId = this.parentSignId ?? saveSystem.progress.unlockedSigns[0];
     this.build = null;
+    this.rolls = new Map();
+    this.formula = false;
     this.details = [];
     this.cards = [];
-    label(this, 240, 26, this.parentSignId ? 'ELIGE UN DESCENDIENTE' : 'ELIGE TU SIGNO', { size: 16 });
-    if (this.parentSignId) {
-      const parent = ZODIAC_BY_ID[this.parentSignId];
-      label(this, 240, 45, `ASCENDIENTE: ${parent.name}`, { color: ELEMENTS[parent.element].color });
-    } else {
-      label(this, 240, 45, 'LOS DEMÁS SIGNOS SE ABREN AL VENCER JEFES', { color: ink.muted });
-    }
+    label(this, 240, 19, this.parentSignId ? 'HERENCIA ZODIACAL' : 'ELIGE TU SIGNO', { size: 16 });
+    label(this, 127, 43, this.parentSignId ? 'ELIGE AL DESCENDIENTE' : 'SIGNOS DISPONIBLES', { color: ink.muted, size: 7 });
 
     ZODIAC_SIGNS.forEach((sign, index) => {
-      const x = 44 + (index % 4) * 55;
-      const y = 88 + Math.floor(index / 4) * 62;
+      const x = 42 + (index % 4) * 48;
+      const y = 82 + Math.floor(index / 4) * 49;
       const unlocked = saveSystem.progress.unlockedSigns.includes(sign.id);
-      const background = frame(this, x, y, 53, 56, 'button');
-      this.add.image(x, y - 9, 'zodiac', index).setScale(0.75).setAlpha(unlocked ? 1 : 0.38);
-      label(this, x, y + 11, sign.name, { size: 6, color: unlocked ? ink.white : ink.dim });
+      const background = frame(this, x, y, 46, 46, 'button');
+      this.add.image(x, y - 5, 'zodiac', index).setScale(0.59).setAlpha(unlocked ? 1 : 0.36);
+      label(this, x, y + 13, sign.name, { size: Math.min(6, Math.floor(41 / sign.name.length)), color: unlocked ? ink.white : ink.dim });
       if (unlocked) {
         background.setInteractive({ useHandCursor: true });
         background.on('pointerup', () => this.select(sign.id));
-      } else {
-        background.setAlpha(0.39);
-      }
+      } else background.setAlpha(0.36);
       this.cards.push({ background, sign, unlocked });
     });
-    frame(this, 353, 150, 220, 181);
-    button(this, 91, 257, 142, 'VOLVER', () => this.scene.start('menu'), { color: ink.muted });
-    this.confirmButton = button(this, 353, 257, 215, 'CONFIRMAR SIGNO', () => this.confirm(), { color: ink.gold });
+    frame(this, 340, 137, 261, 205);
+    button(this, 66, 257, 102, 'VOLVER', () => this.scene.start('menu'), { color: ink.muted });
+    this.formulaButton = button(this, 169, 257, 102, 'CÁLCULO', () => {
+      this.formula = !this.formula;
+      this.renderPreview();
+    }, { color: ink.muted });
+    this.confirmButton = button(this, 347, 257, 228, this.actionText(), () => this.confirm(), { color: ink.gold });
     this.select(this.signId);
   }
 
   select(signId) {
-    if (this.build || !saveSystem.progress.unlockedSigns.includes(signId)) return;
     this.signId = signId;
+    this.build = this.rolls.get(signId) ?? null;
+    this.confirmButton[1].setText(this.actionText());
+    this.formula = false;
     for (const { background, sign, unlocked } of this.cards) {
-      if (unlocked) background.setTint(sign.id === signId ? 0xf1b989 : 0xd0c0cb);
+      if (unlocked) background.setTint(sign.id === signId ? 0xf6b480 : 0xc9cbd8);
     }
-    const sign = ZODIAC_BY_ID[signId];
-    const prediction = previewDescendant(this.parentSignId, signId, this.ancestor);
-    const color = ELEMENTS[sign.element].color;
-    const attack = (prediction?.hybrid || this.ancestor?.powers.length) && this.ancestor
-      ? ZODIAC_BY_ID[this.ancestor.basicSignId].spell : sign.spell;
-    const stat = (key) => prediction ? `${prediction.statRanges[key].min}-${prediction.statRanges[key].max}` : sign.stats[key];
-    this.setDetails([
-      [78, sign.name, 16, color],
-      [98, attack.name, 8, ink.white],
-      [132, `VIDA ${stat('maxHealth')}   VELOCIDAD ${stat('moveSpeed')}`, 8, ink.muted],
-      [150, `DAÑO ${prediction ? `${Math.round(attack.damage * prediction.spellRanges.damage.min / sign.spell.damage)}-${Math.round(attack.damage * prediction.spellRanges.damage.max / sign.spell.damage)}` : attack.damage}`, 8, ink.muted],
-      [168, `DASH ${stat('dashCooldown')} MS`, 8, ink.muted],
-      [195, prediction?.aspect.name ?? ZONES[sign.element].name, 8, ink.gold],
-      [215, prediction?.hybrid ? `PODER: ${prediction.hybrid.name}` : (this.ancestor?.powers.length ? 'CONSERVA PODERES HEREDADOS' : ''), 8, prediction?.hybrid?.color],
-    ]);
-    this.details.push(wrappedLabel(this, 353, 116, SPELL_DESCRIPTIONS[attack.kind], 194, { size: 6, color: ink.muted }));
-    if (prediction?.hybrid) this.details.push(wrappedLabel(this, 353, 230, prediction.hybrid.description, 195, { size: 6, color: ink.muted }));
+    this.renderPreview();
   }
 
-  setDetails(lines) {
+  actionText() {
+    if (this.build) return 'ENTRAR EN LA MAZMORRA';
+    return this.parentSignId ? 'TIRAR HERENCIA' : 'CONFIRMAR SIGNO';
+  }
+
+  renderPreview() {
     for (const detail of this.details) detail.destroy();
-    this.details = lines.map(([y, text, size, color]) => label(this, 353, y, text, { color, size }));
+    this.details = [];
+    const sign = ZODIAC_BY_ID[this.signId];
+    const preview = previewDescendant(this.parentSignId, this.signId, this.ancestor);
+    const draw = (x, y, text, options) => this.details.push(label(this, x, y, text, options));
+    const wrap = (y, text, options) => this.details.push(wrappedLabel(this, 340, y, text, 233, options));
+    const parent = ZODIAC_BY_ID[this.parentSignId];
+    const accent = preview?.hybrid?.color ?? ZONES[sign.element].color;
+    const cross = parent ? `${parent.name} + ${sign.name}` : `${sign.name} / ${ZONES[sign.element].name}`;
+    draw(340, 52, cross, { size: Math.min(13, Math.floor(233 / cross.length)), color: accent });
+    draw(340, 69, this.build ? 'RESULTADO DE LA TIRADA' : preview ? 'PREVISIÓN ANTES DE LA TIRADA' : 'ESTADÍSTICAS INICIALES', { color: ink.muted, size: 7 });
+    if (this.formula) {
+      if (preview) {
+        const aspect = preview.aspect;
+        const percent = (value) => Math.round(value * 100);
+        draw(340, 93, aspect.name, { size: 12, color: ink.gold });
+        wrap(119, `Atributos: ${percent(1 - aspect.parentWeight)}% del signo elegido + ${percent(aspect.parentWeight)}% del ascendiente. Se usan las bases zodiacales.`, { size: 7 });
+        wrap(163, `Tirada independiente de hasta ${percent(aspect.variation)}% por encima o por debajo. Daño base × ${aspect.damage}. Cadencia base × ${aspect.cooldown}.`.replaceAll('×', 'X'), { size: 7 });
+        wrap(208, aspect.id === 'quincunx' ? 'El quincuncio impide la fusión. Conservas tus poderes.'
+          : aspect.id === 'opposition' ? 'La oposición admite fusiones básicas.' : 'Si existe una receta compatible, se añade al linaje.', { color: ink.muted, size: 7 });
+      } else wrap(135, 'La primera generación usa los valores base del signo. Las tiradas y fusiones empiezan con el primer descendiente.', {});
+      return;
+    }
+
+    const stats = this.build?.stats ?? sign.stats;
+    const attack = this.build?.spell ?? preview?.attack ?? sign.spell;
+    const range = ({ min, max }) => min === max ? min : `${min}-${max}`;
+    const stat = (key) => preview && !this.build ? range(preview.statRanges[key]) : stats[key];
+    const damage = preview && !this.build ? range(preview.damageRange)
+      : Number((attack.damage * (this.build?.affinity.damageScale ?? 1)).toFixed(1));
+    const cooldown = preview && !this.build ? range(preview.cooldownRange) : attack.cooldown;
+    draw(340, 91, `ATAQUE: ${attack.name}`, { color: ink.white, size: 9 });
+    wrap(108, SPELL_DESCRIPTIONS[attack.kind], { color: ink.muted, size: 7 });
+    draw(340, 128, `VIDA ${stat('maxHealth')}   VELOCIDAD ${stat('moveSpeed')}`, { size: 8 });
+    draw(340, 145, `DAÑO ${damage}   CADA ${cooldown} MS`, { size: 8 });
+    draw(340, 161, `DASH ${stat('dashCooldown')} MS`, { size: 8 });
+    const inherited = this.ancestor?.powers ?? [];
+    if (preview) {
+      draw(340, 182, `${preview.aspect.name} / ${preview.hybrid ? 'NUEVO: ' + preview.hybrid.name : 'SIN NUEVA FUSIÓN'}`, { color: accent, size: 8 });
+      if (preview.hybrid) wrap(199, preview.hybrid.description, { color: ink.white, size: 7 });
+      wrap(222, inherited.length ? `CONSERVAS ${inherited.length} PODERES: ${inherited.slice(-4).map((id) => ZONES[id].name).join(' / ')}`
+        : (preview.hybrid ? 'EL PODER NUEVO SE SUMA AL ATAQUE' : 'EL SIGNO ELEGIDO APORTA SU ATAQUE'), { size: 7, color: ink.muted });
+    } else wrap(197, 'Vence jefes para desbloquear otros signos en esta saga.', { color: ink.muted, size: 8 });
   }
 
   confirm() {
     if (!this.build) {
       this.build = createDescendant({ parentSignId: this.parentSignId, signId: this.signId, ancestor: this.ancestor });
-      // Se revela la tirada antes de pasar a combate. En la primera partida
-      // se muestran las cifras base, que no dependen de RNG.
-      const { stats, spell } = this.build;
-      const zone = ZONES[this.build.element];
-      this.confirmButton[1].setText('ENTRAR EN LA MAZMORRA');
-      this.setDetails([
-        [87, ZODIAC_BY_ID[this.signId].name, 16, zone.color],
-        [108, spell.name, 8, ink.white],
-        [132, `VIDA ${stats.maxHealth}   VELOCIDAD ${stats.moveSpeed}`, 8, ink.muted],
-        [150, `DAÑO ${spell.damage}   LANZAR ${spell.cooldown} MS`, 8, ink.muted],
-        [168, `DASH ${stats.dashCooldown} MS`, 8, ink.muted],
-        [195, `AFINIDAD: ${this.build.elements.map((element) => ZONES[element].name).join(' + ')}`, 8, ink.gold],
-        [215, this.build.hybridId ? `ZONA ${zone.name}` : '', 8, zone.color],
-      ]);
+      this.rolls.set(this.signId, this.build);
+      this.formula = false;
+      this.confirmButton[1].setText(this.actionText());
+      this.renderPreview();
       return;
     }
     if (this.build.hybridId) saveSystem.unlockZone(this.build.hybridId);
-    const route = buildFloorRoute(this.signId, saveSystem.progress.unlockedZones);
+    const route = buildFloorRoute(this.signId, this.build.element);
     this.scene.start('game', { build: this.build, route });
   }
 }
