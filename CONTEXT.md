@@ -28,22 +28,39 @@ activa. Al volver a abrir el juego puedes iniciar otra expedición a partir
 del ascendiente guardado. Si abres el juego desde un lanzador, conserva
 la URL de publicación para mantener el mismo origen del guardado.
 
-## Contrato del lanzador
+## Lanzador portátil y build web
 
-El punto de entrada público es el **`index.html` compilado**. Publica el
-contenido de `dist/` completo bajo una URL estable como
-`https://juncal1422.github.io/SignedAway/`. Configura `SignedAway.html`
-para abrir esa URL. Conserva la URL al publicar cambios para que el
-lanzador sea independiente de los nombres del bundle, los módulos o los
-recursos. El proyecto está preparado con `base: './'`. El repositorio y
-la publicación del build son pasos distintos.
+Abre `SignedAway.html` con doble clic. Puedes descargar solo ese HTML
+para probar el build de `main` desde GitHub. El lanzador carga el
+paquete de GitHub Raw por el SHA de la rama y funciona sin GitHub Pages.
+Si GitHub no responde, una copia completa del repositorio puede usar
+`launcher/signed-away.js` sin conexión. Abrir el `index.html` de la raíz
+por `file://` lleva al mismo lanzador.
 
-`index.html` solo monta el juego sobre fondo negro. Renderiza todos los
-paneles, botones, textos, barras y menús dentro de Phaser. Usa NineSlice
-para marcos y botones en WebGL y tipografía bitmap para los rótulos.
-Mantén `pixelArt` y el filtrado por píxel. La piedra y la interfaz usan
-tonos apagados. Reserva los colores saturados para los elementos, la
-magia y las señales de combate.
+```sh
+npm ci
+npm run build:launcher
+```
+
+Versiona `launcher/signed-away.js` junto con cada cambio del juego o de
+los PNG para que el lanzador descargado sirva esa versión. El comando
+empaqueta Phaser, los módulos y los PNG en un único script clásico
+comprimido. Mantén la ruta y el formato del paquete para que
+`SignedAway.html` siga sirviendo al cambiar archivos o escenas.
+Los navegadores actuales pueden leerlo con su descompresor integrado.
+
+Para servir la aplicación por HTTP, usa `npm run dev` en desarrollo o
+publica el contenido de `dist/` después de `npm run build`. El build
+web conserva `base: './'` para alojarlo bajo `/SignedAway/` u otra subruta.
+Los guardados de la versión servida por HTTP y el lanzador local pueden
+pertenecer a almacenamientos distintos según el navegador y la ruta.
+
+`index.html` monta el juego sobre fondo negro. Phaser dibuja los paneles,
+botones, textos, barras y menús dentro del canvas. Usa NineSlice para
+marcos y botones en WebGL y tipografía bitmap para los rótulos. Mantén
+`pixelArt` y el filtrado por píxel. La piedra y la interfaz usan tonos
+apagados. Reserva los colores saturados para los elementos, la magia
+y las señales de combate.
 
 ## Datos de diseño
 
